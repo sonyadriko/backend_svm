@@ -849,7 +849,6 @@ def preprocessing():
     # get stopword indonesia
     list_stopwords = stopwords.words('indonesian')
 
-
     # ---------------------------- manualy add stopword  ------------------------------------
     # append additional stopword
     list_stopwords.extend(["yg", "dg", "rt", "dgn", "ny", "d", 'klo', 
@@ -862,13 +861,20 @@ def preprocessing():
 
     # ----------------------- add stopword from txt file ------------------------------------
     # read txt stopword using pandas
-    txt_stopword = pd.read_csv("stopwords.txt", names= ["stopwords"], header = None)
+    # txt_stopword = pd.read_csv("stopwords.txt", names= ["stopwords"], header = None)
 
     # convert stopword string to list & append additional stopword
-    list_stopwords.extend(txt_stopword["stopwords"][0].split(' '))
+    # list_stopwords.extend(txt_stopword["stopwords"][0].split(' '))
+    
+    # Read the stopwords from the txt file
+    txt_stopword = pd.read_csv("stopwords.txt", names=["stopwords"], header=None)
 
+    # Convert the stopwords column to a list
+    stopword_list = txt_stopword["stopwords"].tolist()
     # ---------------------------------------------------------------------------------------
 
+    # Extend the list_stopwords with the stopwords from the file   
+    list_stopwords.extend(stopword_list)
     # convert list to dictionary
     list_stopwords = set(list_stopwords)
 
@@ -880,6 +886,40 @@ def preprocessing():
 # -----STOPWORD------
     TWEET_DATA['tweet_tokens_WSW'] = TWEET_DATA['tweet_tokens'].apply(stopwords_removal) 
 
+
+ # ------------------- Normalization -----------------------
+    # normalization_dict = {
+    #     "gak": "tidak", "ga": "tidak", "kalo": "kalau", "klo": "kalau",
+    #     "nya": "dia", "nih": "ini", "sih": "saja", "tau": "tahu",
+    #     "tdk": "tidak", "tuh": "itu", "utk": "untuk", "ya": "iya", "jd": "jadi",
+    #     "jgn": "jangan", "aja": "saja", "dgn": "dengan", "dg": "dengan", "yg": "yang"
+    # }
+    normalization_dict = {}
+    # with open('normalisasi.txt', 'r') as file:
+    #     for line in file:
+    #         slang, normal = line.strip().split(':')
+    #         normalization_dict[slang] = normal
+    # with open('normalisasi.txt', 'r') as file:
+    #     for line in file:
+    #         if ':' in line:
+    #             slang, normal = line.strip().replace('"', '').split(': ')
+    #             normalization_dict[slang.strip()] = normal.strip()
+    with open('normalisasi.txt', 'r') as file:
+        for line in file:
+            if ':' in line:
+                parts = line.strip().replace('"', '').split(': ')
+                if len(parts) == 2:
+                    slang, normal = parts
+                    normalization_dict[slang.strip()] = normal.strip()
+    def normalize_text(text):
+        return [normalization_dict.get(word, word) for word in text]
+
+    # def normalize_text(text):
+    #     return [normalization_dict[word] if word in normalization_dict else word for word in text]
+
+    TWEET_DATA['tweet_tokens_normalized'] = TWEET_DATA['tweet_tokens_WSW'].apply(normalize_text)
+
+
     # create stemmer
     factory = StemmerFactory()
     stemmer = factory.create_stemmer()
@@ -890,10 +930,14 @@ def preprocessing():
 
     term_dict = {}
 
-    for document in TWEET_DATA['tweet_tokens_WSW']:
+    # for document in TWEET_DATA['tweet_tokens_WSW']:
+    #     for term in document:
+    #         if term not in term_dict:
+    #             term_dict[term] = ' '
+    for document in TWEET_DATA['tweet_tokens_normalized']:
         for term in document:
             if term not in term_dict:
-                term_dict[term] = ' '
+                term_dict[term] = stemmed_wrapper(term)
 
     print(len(term_dict))
     print("------------------------")
@@ -911,7 +955,7 @@ def preprocessing():
         return [term_dict[term] for term in document]
 
     # -----STEMMING-------
-    TWEET_DATA['tweet_tokens_stemmed'] = TWEET_DATA['tweet_tokens_WSW'].swifter.apply(get_stemmed_term)
+    TWEET_DATA['tweet_tokens_stemmed'] = TWEET_DATA['tweet_tokens_normalized'].swifter.apply(get_stemmed_term)
     
     TWEET_DATA.to_csv("Text_Preprocessing.csv")
     
