@@ -294,173 +294,173 @@ return "preprocessing berhasil"
 # API TF-IDF
 @app.route('/tf-idf')
 def tfidf():
-TWEET_DATA = pd.read_csv("Text_Preprocessing.csv", usecols=["tweet_tokens_stemmed"])
-TWEET_DATA.columns = ["tweet"]
+    TWEET_DATA = pd.read_csv("Text_Preprocessing.csv", usecols=["tweet_tokens_stemmed"])
+    TWEET_DATA.columns = ["tweet"]
 
-def convert_text_list(texts):
-texts = ast.literal_eval(texts)
-return [text for text in texts]
+    def convert_text_list(texts):
+    texts = ast.literal_eval(texts)
+    return [text for text in texts]
 
-TWEET_DATA["tweet_list"] = TWEET_DATA["tweet"].apply(convert_text_list)
+    TWEET_DATA["tweet_list"] = TWEET_DATA["tweet"].apply(convert_text_list)
 
-def calc_TF(document):
-# Counts the number of times the word appears in review
-TF_dict = {}
-for term in document:
-if term in TF_dict:
-TF_dict[term] += 1
-else:
-TF_dict[term] = 1
-# Computes tf for each word
-for term in TF_dict:
-TF_dict[term] = TF_dict[term] / len(document)
-return TF_dict
+    def calc_TF(document):
+    # Counts the number of times the word appears in review
+    TF_dict = {}
+    for term in document:
+    if term in TF_dict:
+    TF_dict[term] += 1
+    else:
+    TF_dict[term] = 1
+    # Computes tf for each word
+    for term in TF_dict:
+    TF_dict[term] = TF_dict[term] / len(document)
+    return TF_dict
 
-TWEET_DATA["TF_dict"] = TWEET_DATA['tweet_list'].apply(calc_TF)
+    TWEET_DATA["TF_dict"] = TWEET_DATA['tweet_list'].apply(calc_TF)
 
-# Check TF result
-#index = 99
-index = TWEET_DATA.shape[0]
+    # Check TF result
+    #index = 99
+    index = TWEET_DATA.shape[0]
 
-print('%20s' % "term", "\t", "TF\n")
-for key in TWEET_DATA["TF_dict"][index-1]:
-print('%20s' % key, "\t", TWEET_DATA["TF_dict"][index-1][key])
+    print('%20s' % "term", "\t", "TF\n")
+    for key in TWEET_DATA["TF_dict"][index-1]:
+    print('%20s' % key, "\t", TWEET_DATA["TF_dict"][index-1][key])
 
-def calc_DF(tfDict):
-count_DF = {}
-# Run through each document's tf dictionary and increment countDict's (term, doc) pair
-for document in tfDict:
-for term in document:
-if term in count_DF:
-count_DF[term] += 1
-else:
-count_DF[term] = 1
-return count_DF
+    def calc_DF(tfDict):
+    count_DF = {}
+    # Run through each document's tf dictionary and increment countDict's (term, doc) pair
+    for document in tfDict:
+    for term in document:
+    if term in count_DF:
+    count_DF[term] += 1
+    else:
+    count_DF[term] = 1
+    return count_DF
 
-DF = calc_DF(TWEET_DATA["TF_dict"])
+    DF = calc_DF(TWEET_DATA["TF_dict"])
 
-n_document = len(TWEET_DATA)
+    n_document = len(TWEET_DATA)
 
-def calc_IDF(__n_document, __DF):
-IDF_Dict = {}
-for term in __DF:
-IDF_Dict[term] = np.log(__n_document / (__DF[term] + 1))
-return IDF_Dict
+    def calc_IDF(__n_document, __DF):
+    IDF_Dict = {}
+    for term in __DF:
+    IDF_Dict[term] = np.log(__n_document / (__DF[term] + 1))
+    return IDF_Dict
 
-#Stores the idf dictionary
-IDF = calc_IDF(n_document, DF)
+    #Stores the idf dictionary
+    IDF = calc_IDF(n_document, DF)
 
-#calc TF-IDF
-def calc_TF_IDF(TF):
-TF_IDF_Dict = {}
-#For each word in the review, we multiply its tf and its idf.
-for key in TF:
-TF_IDF_Dict[key] = TF[key] * IDF[key]
-return TF_IDF_Dict
+    #calc TF-IDF
+    def calc_TF_IDF(TF):
+    TF_IDF_Dict = {}
+    #For each word in the review, we multiply its tf and its idf.
+    for key in TF:
+    TF_IDF_Dict[key] = TF[key] * IDF[key]
+    return TF_IDF_Dict
 
-#Stores the TF-IDF Series
-TWEET_DATA["TF-IDF_dict"] = TWEET_DATA["TF_dict"].apply(calc_TF_IDF)
+    #Stores the TF-IDF Series
+    TWEET_DATA["TF-IDF_dict"] = TWEET_DATA["TF_dict"].apply(calc_TF_IDF)
 
-# Check TF-IDF result
-#index = 99
-index = TWEET_DATA.shape[0]
+    # Check TF-IDF result
+    #index = 99
+    index = TWEET_DATA.shape[0]
 
-print('%20s' % "term", "\t", '%10s' % "TF", "\t", '%20s' % "TF-IDF\n")
-for key in TWEET_DATA["TF-IDF_dict"][index-1]:
-print('%20s' % key, "\t", TWEET_DATA["TF_dict"][index-1][key] ,"\t" , TWEET_DATA["TF-IDF_dict"][index-1][key])
-
-
-# sort descending by value for DF dictionary
-sorted_DF = sorted(DF.items(), key=lambda kv: kv[1], reverse=True)[:100]
-
-# Create a list of unique words from sorted dictionay `sorted_DF`
-unique_term = [item[0] for item in sorted_DF]
-
-def calc_TF_IDF_Vec(__TF_IDF_Dict):
-TF_IDF_vector = [0.0] * len(unique_term)
-
-# For each unique word, if it is in the review, store its TF-IDF value.
-for i, term in enumerate(unique_term):
-if term in __TF_IDF_Dict:
-TF_IDF_vector[i] = __TF_IDF_Dict[term]
-return TF_IDF_vector
-
-TWEET_DATA["TF_IDF_Vec"] = TWEET_DATA["TF-IDF_dict"].apply(calc_TF_IDF_Vec)
+    print('%20s' % "term", "\t", '%10s' % "TF", "\t", '%20s' % "TF-IDF\n")
+    for key in TWEET_DATA["TF-IDF_dict"][index-1]:
+    print('%20s' % key, "\t", TWEET_DATA["TF_dict"][index-1][key] ,"\t" , TWEET_DATA["TF-IDF_dict"][index-1][key])
 
 
-# Convert Series to List
-TF_IDF_Vec_List = np.array(TWEET_DATA["TF_IDF_Vec"].to_list())
+    # sort descending by value for DF dictionary
+    sorted_DF = sorted(DF.items(), key=lambda kv: kv[1], reverse=True)[:100]
 
-# Sum element vector in axis=0
-sums = TF_IDF_Vec_List.sum(axis=0)
+    # Create a list of unique words from sorted dictionay `sorted_DF`
+    unique_term = [item[0] for item in sorted_DF]
 
-data = []
+    def calc_TF_IDF_Vec(__TF_IDF_Dict):
+    TF_IDF_vector = [0.0] * len(unique_term)
 
-for col, term in enumerate(unique_term):
-data.append((term, sums[col]))
+    # For each unique word, if it is in the review, store its TF-IDF value.
+    for i, term in enumerate(unique_term):
+    if term in __TF_IDF_Dict:
+    TF_IDF_vector[i] = __TF_IDF_Dict[term]
+    return TF_IDF_vector
 
-ranking = pd.DataFrame(data, columns=['term', 'rank'])
-ranking.sort_values('rank', ascending=False)
+    TWEET_DATA["TF_IDF_Vec"] = TWEET_DATA["TF-IDF_dict"].apply(calc_TF_IDF_Vec)
 
-# join list of token as single document string
 
-def join_text_list(texts):
-texts = ast.literal_eval(texts)
-return ' '.join([text for text in texts])
+    # Convert Series to List
+    TF_IDF_Vec_List = np.array(TWEET_DATA["TF_IDF_Vec"].to_list())
 
-TWEET_DATA["tweet_join"] = TWEET_DATA["tweet"].apply(join_text_list)
+    # Sum element vector in axis=0
+    sums = TF_IDF_Vec_List.sum(axis=0)
 
-# from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
-# from sklearn.preprocessing import normalize
+    data = []
 
-max_features = 100
+    for col, term in enumerate(unique_term):
+    data.append((term, sums[col]))
 
-# calc TF vector
-cvect = CountVectorizer(max_features=max_features)
-TF_vector = cvect.fit_transform(TWEET_DATA["tweet_join"])
+    ranking = pd.DataFrame(data, columns=['term', 'rank'])
+    ranking.sort_values('rank', ascending=False)
 
-# normalize TF vector
-normalized_TF_vector = normalize(TF_vector, norm='l1', axis=1)
+    # join list of token as single document string
 
-# calc IDF
-tfidf = TfidfVectorizer(max_features=max_features, smooth_idf=False)
-tfs = tfidf.fit_transform(TWEET_DATA["tweet_join"])
-IDF_vector = tfidf.idf_
+    def join_text_list(texts):
+    texts = ast.literal_eval(texts)
+    return ' '.join([text for text in texts])
 
-# hitung TF x IDF sehingga dihasilkan TFIDF matrix / vector
-tfidf_mat = normalized_TF_vector.multiply(IDF_vector).toarray()
+    TWEET_DATA["tweet_join"] = TWEET_DATA["tweet"].apply(join_text_list)
 
-max_features = 100
+    # from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
+    # from sklearn.preprocessing import normalize
 
-# ngram_range (1, 3) to use unigram, bigram, trigram
-cvect = CountVectorizer(max_features=max_features, ngram_range=(1,3))
-counts = cvect.fit_transform(TWEET_DATA["tweet_join"])
+    max_features = 100
 
-normalized_counts = normalize(counts, norm='l1', axis=1)
+    # calc TF vector
+    cvect = CountVectorizer(max_features=max_features)
+    TF_vector = cvect.fit_transform(TWEET_DATA["tweet_join"])
 
-tfidf = TfidfVectorizer(max_features=max_features, ngram_range=(1,3), smooth_idf=False)
-tfs = tfidf.fit_transform(TWEET_DATA["tweet_join"])
+    # normalize TF vector
+    normalized_TF_vector = normalize(TF_vector, norm='l1', axis=1)
 
-# tfidf_mat = normalized_counts.multiply(tfidf.idf_).toarray()
+    # calc IDF
+    tfidf = TfidfVectorizer(max_features=max_features, smooth_idf=False)
+    tfs = tfidf.fit_transform(TWEET_DATA["tweet_join"])
+    IDF_vector = tfidf.idf_
 
-type(counts)
-counts.shape
+    # hitung TF x IDF sehingga dihasilkan TFIDF matrix / vector
+    tfidf_mat = normalized_TF_vector.multiply(IDF_vector).toarray()
 
-print(tfidf.vocabulary_)
+    max_features = 100
 
-print(tfidf.get_feature_names_out())
-a=tfidf.get_feature_names_out()
+    # ngram_range (1, 3) to use unigram, bigram, trigram
+    cvect = CountVectorizer(max_features=max_features, ngram_range=(1,3))
+    counts = cvect.fit_transform(TWEET_DATA["tweet_join"])
 
-print(tfs.toarray())
-b=tfs.toarray()
+    normalized_counts = normalize(counts, norm='l1', axis=1)
 
-tfidf_mat = normalized_counts.multiply(IDF_vector).toarray()
-dfbtf = pd.DataFrame(data=tfidf_mat,columns=[a])
-dfbtf
+    tfidf = TfidfVectorizer(max_features=max_features, ngram_range=(1,3), smooth_idf=False)
+    tfs = tfidf.fit_transform(TWEET_DATA["tweet_join"])
 
-dfbtf.to_csv("hasil_vector_matrix.csv")
+    # tfidf_mat = normalized_counts.multiply(tfidf.idf_).toarray()
 
-return "tf-idf sukses"
+    type(counts)
+    counts.shape
+
+    print(tfidf.vocabulary_)
+
+    print(tfidf.get_feature_names_out())
+    a=tfidf.get_feature_names_out()
+
+    print(tfs.toarray())
+    b=tfs.toarray()
+
+    tfidf_mat = normalized_counts.multiply(IDF_vector).toarray()
+    dfbtf = pd.DataFrame(data=tfidf_mat,columns=[a])
+    dfbtf
+
+    dfbtf.to_csv("hasil_vector_matrix.csv")
+
+    return "tf-idf sukses"
 
 # API Pelabelan sentimen
 @app.route('/sentimen-pelabelan')

@@ -38,12 +38,18 @@ import logging
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 import swifter
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
 CORS(app)
 
-logging.basicConfig(level=logging.DEBUG)
+# logging.basicConfig(level=logging.DEBUG)
 model = None  # Global model
 scaler = None
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def initialize_model():
     # Initialize with polynomial kernel
@@ -58,9 +64,15 @@ def train_sequential_svm():
     df = pd.read_csv("pelabelan.csv", header=0)
     # df = pd.read_csv("hasil_vector_matrix.csv", header=0)
     
-    # Memisahkan fitur dan label
-    X = df.drop(columns=['Unnamed: 0', 'aktual', 'sentimen']).values
-    y = df['sentimen'].values
+    # # Memisahkan fitur dan label
+    # X = df.drop(columns=['Unnamed: 0', 'aktual', 'sentimen']).values
+    # y = df['sentimen'].values
+    
+    # X = df.drop(columns=['Unnamed: 0', 'aktual']).values
+    # y = df['aktual'].values
+    
+    X = df.drop(columns=['status','label']).values
+    y = df['label'].values
 
     # Menstandarisasi fitur
     scaler = StandardScaler()
@@ -73,6 +85,7 @@ def train_sequential_svm():
     model.fit(X, y)
 
     return "Pelatihan Sequential SVM berhasil"
+
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 
@@ -131,7 +144,7 @@ def predict():
         logging.debug(f"Support vectors (yi): {support_vectors}")
 
         # Mengonversi prediksi numerik ke label sentimen
-        sentiment = 'Positif' if prediction[0] == 1 else 'Negatif'
+        sentiment = 'Negatif' if kernel_matrix[0] < 0 else 'Positif'
         logging.info(f"Sentimen yang diprediksi: {sentiment}")
 
         return jsonify({"sentimen": sentiment, "kernel_matrix": kernel_matrix.tolist(), "alpha_values": dual_coef.tolist(), "support_vectors": support_vectors.tolist()})
@@ -444,11 +457,11 @@ def SVM():
         df = pd.read_csv("pelabelan.csv", header=0)
 
         label_encoder = LabelEncoder()
-        df['sentimen'] = label_encoder.fit_transform(df['sentimen'])
+        df['label'] = label_encoder.fit_transform(df['label'])
 
         # Pisahkan fitur dan label
-        X = df.drop(columns=['Unnamed: 0', 'aktual', 'sentimen'])
-        y = df['sentimen']
+        X = df.drop(columns=['status', 'label'])
+        y = df['label']
         
         XNum = X.astype(np.float64)
         yNum = y.astype(np.float64)
@@ -457,8 +470,11 @@ def SVM():
         if len(np.unique(yNum)) <= 1:
             return "Error: Jumlah kelas harus lebih dari satu; hanya mendapatkan 1 kelas"
 
+        # Get test_size parameter from request
+        test_size = request.args.get('test_size', default=0.2, type=float)
         # Split data menjadi data latih dan data uji
-        X_train, X_test, y_train, y_test = train_test_split(XNum, yNum, test_size=0.4, random_state=42)
+        # X_train, X_test, y_train, y_test = train_test_split(XNum, yNum, test_size=0.4, random_state=42)
+        X_train, X_test, y_train, y_test = train_test_split(XNum, yNum, test_size=test_size, random_state=42)
 
         # Inisialisasi model SVM
         svm_model = SVC(kernel='poly')
@@ -619,13 +635,13 @@ def dataTraining():
     
     return jsonify(data)
      
-    #   # Membaca data tweet dari file CSV
-    # TWEET_DATA = pd.read_csv("data_tweet.csv", usecols=['rawContent', 'status'])
-    
+  # Memeriksa ekstensi file
+ 
+    # TWEET_DATA = pd.read_excel("data_tweet.csv", usecols=['rawContent', 'status'])
     # # Mengonversi data ke dalam format dictionary
     # data = TWEET_DATA.to_dict(orient='records')
     
-    # # Mengembalikan data dalam format JSON
+    # Mengembalikan data dalam format JSON
     # return jsonify(data)
 
 # API data testing
@@ -775,135 +791,299 @@ def dataChart():
 #     return "Preprocessing successful"
 
 # API preprocessing
+# @app.route('/preprocessing')
+# def preprocessing():
+    
+#     TWEET_DATA = pd.read_csv("data_tweet.csv")
+    
+#     # Menghapus kolom selain 'rawContent'
+#     raw_content_df = TWEET_DATA.drop(columns=[col for col in TWEET_DATA.columns if col != 'rawContent'])
+    
+#      #---------- Case Folding -------
+#     # mengubah text menjadi lowercase
+#     raw_content_df['caseFolding'] = raw_content_df['rawContent'].str.lower()
+
+#     # ------ Tokenizing ---------
+
+#     def remove_tweet_special(text):
+#         # remove tab, new line, ans back slice
+#         text = text.replace('\\t'," ").replace('\\n'," ").replace('\\u'," ").replace('\\',"")
+#         # remove non ASCII (emoticon, chinese word, .etc)
+#         text = text.encode('ascii', 'replace').decode('ascii')
+#         # remove mention, link, hashtag
+#         text = ' '.join(re.sub("([@#][A-Za-z0-9]+)|(\w+:\/\/\S+)"," ", text).split())
+#         # remove incomplete URL
+#         return text.replace("http://", " ").replace("https://", " ")
+
+#     raw_content_df['cleaning'] = raw_content_df['caseFolding'].apply(remove_tweet_special)
+
+#     #remove number
+#     def remove_number(text):
+#         return  re.sub(r"\d+", "", text)
+
+#     raw_content_df['cleaning'] = raw_content_df['cleaning'].apply(remove_number)
+
+#     #remove punctuation
+#     def remove_punctuation(text):
+#         return text.translate(str.maketrans("","",string.punctuation))
+
+#     raw_content_df['cleaning'] = raw_content_df['cleaning'].apply(remove_punctuation)
+
+#     #remove whitespace leading & trailing
+#     def remove_whitespace_LT(text):
+#         return text.strip()
+
+#     raw_content_df['cleaning'] = raw_content_df['cleaning'].apply(remove_whitespace_LT)
+
+#     #remove multiple whitespace into single whitespace
+#     def remove_whitespace_multiple(text):
+#         return re.sub('\s+',' ',text)
+
+#     raw_content_df['cleaning'] = raw_content_df['cleaning'].apply(remove_whitespace_multiple)
+
+#     # remove single char
+#     def remove_singl_char(text):
+#         return re.sub(r"\b[a-zA-Z]\b", "", text)
+
+#     raw_content_df['cleaning'] = raw_content_df['cleaning'].apply(remove_singl_char)
+
+
+# # -----Tokenizing-----
+
+#     # NLTK word rokenize 
+#     def word_tokenize_wrapper(text):
+#         return word_tokenize(text)
+
+#     raw_content_df['tweet_tokens'] = raw_content_df['cleaning'].apply(word_tokenize_wrapper)
+    
+#     # NLTK calc frequency distribution
+#     def freqDist_wrapper(text):
+#         return FreqDist(text)
+
+#     raw_content_df['tweet_tokens_fdist'] = raw_content_df['tweet_tokens'].apply(freqDist_wrapper)
+#     raw_content_df['tweet_tokens_fdist'].head().apply(lambda x : x.most_common())
+    
+
+#     # ----------------------- get stopword from NLTK stopword -------------------------------
+#     # get stopword indonesia
+#     list_stopwords = stopwords.words('indonesian')
+
+#     # ---------------------------- manualy add stopword  ------------------------------------
+#     # append additional stopword
+#     list_stopwords.extend(["yg", "dg", "rt", "dgn", "ny", "d", 'klo', 
+#                            'kalo', 'amp', 'biar', 'bikin', 'bilang', 
+#                            'gak', 'ga', 'krn', 'nya', 'nih', 'sih', 
+#                            'si', 'tau', 'tdk', 'tuh', 'utk', 'ya', 
+#                            'jd', 'jgn', 'sdh', 'aja', 'n', 't', 
+#                            'nyg', 'hehe', 'pen', 'u', 'nan', 'loh', 'rt',
+#                            '&amp', 'yah', 'game', 'bagus', 'jaring', 'gk', 'tolong', 'terima', 'kasih', 'moonton', 'mohon', 'baik', 'mobile', 'legends', 'legend', 'mobilelegend', 'mobilelegends', 'kasi', 'bintang', 'udh'])
+
+#     # ----------------------- add stopword from txt file ------------------------------------
+#     # read txt stopword using pandas
+#     # txt_stopword = pd.read_csv("stopwords.txt", names= ["stopwords"], header = None)
+
+#     # convert stopword string to list & append additional stopword
+#     # list_stopwords.extend(txt_stopword["stopwords"][0].split(' '))
+    
+#     # Read the stopwords from the txt file
+#     txt_stopword = pd.read_csv("stopwords.txt", names=["stopwords"], header=None)
+
+#     # Convert the stopwords column to a list
+#     stopword_list = txt_stopword["stopwords"].tolist()
+#     # ---------------------------------------------------------------------------------------
+
+#     # Extend the list_stopwords with the stopwords from the file   
+#     list_stopwords.extend(stopword_list)
+#     # convert list to dictionary
+#     list_stopwords = set(list_stopwords)
+
+
+#     #remove stopword pada list token
+#     def stopwords_removal(words):
+#         return [word for word in words if word not in list_stopwords]
+
+# # -----STOPWORD------
+#     raw_content_df['tweet_tokens_WSW'] = raw_content_df['tweet_tokens'].apply(stopwords_removal) 
+
+
+#  # ------------------- Normalization -----------------------
+#     # normalization_dict = {
+#     #     "gak": "tidak", "ga": "tidak", "kalo": "kalau", "klo": "kalau",
+#     #     "nya": "dia", "nih": "ini", "sih": "saja", "tau": "tahu",
+#     #     "tdk": "tidak", "tuh": "itu", "utk": "untuk", "ya": "iya", "jd": "jadi",
+#     #     "jgn": "jangan", "aja": "saja", "dgn": "dengan", "dg": "dengan", "yg": "yang"
+#     # }
+#     normalization_dict = {}
+#     # with open('normalisasi.txt', 'r') as file:
+#     #     for line in file:
+#     #         slang, normal = line.strip().split(':')
+#     #         normalization_dict[slang] = normal
+#     # with open('normalisasi.txt', 'r') as file:
+#     #     for line in file:
+#     #         if ':' in line:
+#     #             slang, normal = line.strip().replace('"', '').split(': ')
+#     #             normalization_dict[slang.strip()] = normal.strip()
+#     with open('normalisasi.txt', 'r') as file:
+#         for line in file:
+#             if ':' in line:
+#                 parts = line.strip().replace('"', '').split(': ')
+#                 if len(parts) == 2:
+#                     slang, normal = parts
+#                     normalization_dict[slang.strip()] = normal.strip()
+#     def normalize_text(text):
+#         return [normalization_dict.get(word, word) for word in text]
+
+#     # def normalize_text(text):
+#     #     return [normalization_dict[word] if word in normalization_dict else word for word in text]
+
+#     raw_content_df['tweet_tokens_normalized'] = raw_content_df['tweet_tokens_WSW'].apply(normalize_text)
+
+
+#     # create stemmer
+#     factory = StemmerFactory()
+#     stemmer = factory.create_stemmer()
+
+#     # stemmed
+#     def stemmed_wrapper(term):
+#         return stemmer.stem(term)
+
+#     term_dict = {}
+
+#     # for document in TWEET_DATA['tweet_tokens_WSW']:
+#     #     for term in document:
+#     #         if term not in term_dict:
+#     #             term_dict[term] = ' '
+#     for document in raw_content_df['tweet_tokens_normalized']:
+#         for term in document:
+#             if term not in term_dict:
+#                 term_dict[term] = stemmed_wrapper(term)
+
+#     print(len(term_dict))
+#     print("------------------------")
+
+#     for term in term_dict:
+#         term_dict[term] = stemmed_wrapper(term)
+#         print(term,":" ,term_dict[term])
+
+#     print(term_dict)
+#     print("------------------------")
+
+
+#     # apply stemmed term to dataframe
+#     def get_stemmed_term(document):
+#         return [term_dict[term] for term in document]
+
+#     # -----STEMMING-------
+#     raw_content_df['tweet_tokens_stemmed'] = raw_content_df['tweet_tokens_normalized'].swifter.apply(get_stemmed_term)
+    
+#     raw_content_df.to_csv("Text_Preprocessing.csv")
+    
+#     return "preprocessing berhasil"
+
 @app.route('/preprocessing')
 def preprocessing():
+    logger.info("Starting preprocessing")
     
     TWEET_DATA = pd.read_csv("data_tweet.csv")
-    
-     #---------- Case Folding -------
-    # mengubah text menjadi lowercase
-    TWEET_DATA['caseFolding'] = TWEET_DATA['rawContent'].str.lower()
+    logger.info("Data read from CSV")
 
-    # ------ Tokenizing ---------
+    # Menghapus kolom selain 'rawContent'
+    raw_content_df = TWEET_DATA.drop(columns=[col for col in TWEET_DATA.columns if col != 'rawContent'])
+    logger.info("Columns other than 'rawContent' dropped")
 
+    # Case Folding
+    raw_content_df['caseFolding'] = raw_content_df['rawContent'].str.lower()
+    logger.info("Case folding applied")
+
+    # Cleaning text
     def remove_tweet_special(text):
-        # remove tab, new line, ans back slice
         text = text.replace('\\t'," ").replace('\\n'," ").replace('\\u'," ").replace('\\',"")
-        # remove non ASCII (emoticon, chinese word, .etc)
         text = text.encode('ascii', 'replace').decode('ascii')
-        # remove mention, link, hashtag
         text = ' '.join(re.sub("([@#][A-Za-z0-9]+)|(\w+:\/\/\S+)"," ", text).split())
-        # remove incomplete URL
-        return text.replace("http://", " ").replace("https://", " ")
+        text = text.replace("http://", " ").replace("https://", " ")
+        text = re.sub(r'[.!&,/@#$%^*\-]{1,5}', ' ', text)  # Replace one, two, or three occurrences of . ! & -
+         # Menghapus angka
+        text = re.sub(r"\d+", "", text)
 
-    TWEET_DATA['cleaning'] = TWEET_DATA['caseFolding'].apply(remove_tweet_special)
+        # Menghapus tanda baca
+        text = text.translate(str.maketrans("", "", string.punctuation))
 
-    #remove number
+        # Menghapus spasi berlebih
+        text = re.sub(r'\s+', ' ', text).strip()
+
+        # Menghapus karakter tunggal
+        text = re.sub(r"\b[a-zA-Z]\b", "", text)
+        return text
+
+    raw_content_df['cleaning'] = raw_content_df['caseFolding'].apply(remove_tweet_special)
+    logger.info("Special characters removed")
+
+    # Remove number
     def remove_number(text):
         return  re.sub(r"\d+", "", text)
 
-    TWEET_DATA['cleaning'] = TWEET_DATA['cleaning'].apply(remove_number)
+    raw_content_df['cleaning'] = raw_content_df['cleaning'].apply(remove_number)
+    logger.info("Numbers removed")
 
-    #remove punctuation
+    # Remove punctuation
     def remove_punctuation(text):
         return text.translate(str.maketrans("","",string.punctuation))
 
-    TWEET_DATA['cleaning'] = TWEET_DATA['cleaning'].apply(remove_punctuation)
+    raw_content_df['cleaning'] = raw_content_df['cleaning'].apply(remove_punctuation)
+    logger.info("Punctuation removed")
 
-    #remove whitespace leading & trailing
+    # Remove whitespace leading & trailing
     def remove_whitespace_LT(text):
         return text.strip()
 
-    TWEET_DATA['cleaning'] = TWEET_DATA['cleaning'].apply(remove_whitespace_LT)
+    raw_content_df['cleaning'] = raw_content_df['cleaning'].apply(remove_whitespace_LT)
+    logger.info("Leading and trailing whitespace removed")
 
-    #remove multiple whitespace into single whitespace
+    # Remove multiple whitespace into single whitespace
     def remove_whitespace_multiple(text):
         return re.sub('\s+',' ',text)
 
-    TWEET_DATA['cleaning'] = TWEET_DATA['cleaning'].apply(remove_whitespace_multiple)
+    raw_content_df['cleaning'] = raw_content_df['cleaning'].apply(remove_whitespace_multiple)
+    logger.info("Multiple whitespace reduced to single")
 
-    # remove single char
+    # Remove single char
     def remove_singl_char(text):
         return re.sub(r"\b[a-zA-Z]\b", "", text)
 
-    TWEET_DATA['cleaning'] = TWEET_DATA['cleaning'].apply(remove_singl_char)
+    raw_content_df['cleaning'] = raw_content_df['cleaning'].apply(remove_singl_char)
+    logger.info("Single characters removed")
 
-
-# -----Tokenizing-----
-
-    # NLTK word rokenize 
+    # Tokenizing
     def word_tokenize_wrapper(text):
         return word_tokenize(text)
 
-    TWEET_DATA['tweet_tokens'] = TWEET_DATA['cleaning'].apply(word_tokenize_wrapper)
-    
-    # NLTK calc frequency distribution
+    raw_content_df['tweet_tokens'] = raw_content_df['cleaning'].apply(word_tokenize_wrapper)
+    logger.info("Tokenization applied")
+
     def freqDist_wrapper(text):
         return FreqDist(text)
 
-    TWEET_DATA['tweet_tokens_fdist'] = TWEET_DATA['tweet_tokens'].apply(freqDist_wrapper)
-    TWEET_DATA['tweet_tokens_fdist'].head().apply(lambda x : x.most_common())
-    
+    raw_content_df['tweet_tokens_fdist'] = raw_content_df['tweet_tokens'].apply(freqDist_wrapper)
+    raw_content_df['tweet_tokens_fdist'].head().apply(lambda x : x.most_common())
+    logger.info("Frequency distribution calculated")
 
-    # ----------------------- get stopword from NLTK stopword -------------------------------
-    # get stopword indonesia
+    # Stopword Removal
     list_stopwords = stopwords.words('indonesian')
+    list_stopwords.extend([...])  # Add additional stopwords
 
-    # ---------------------------- manualy add stopword  ------------------------------------
-    # append additional stopword
-    list_stopwords.extend(["yg", "dg", "rt", "dgn", "ny", "d", 'klo', 
-                           'kalo', 'amp', 'biar', 'bikin', 'bilang', 
-                           'gak', 'ga', 'krn', 'nya', 'nih', 'sih', 
-                           'si', 'tau', 'tdk', 'tuh', 'utk', 'ya', 
-                           'jd', 'jgn', 'sdh', 'aja', 'n', 't', 
-                           'nyg', 'hehe', 'pen', 'u', 'nan', 'loh', 'rt',
-                           '&amp', 'yah', 'game', 'bagus', 'jaring', 'gk', 'tolong', 'terima', 'kasih', 'moonton', 'mohon', 'baik', 'mobile', 'legends', 'legend', 'mobilelegend', 'mobilelegends', 'kasi', 'bintang', 'udh'])
-
-    # ----------------------- add stopword from txt file ------------------------------------
-    # read txt stopword using pandas
-    # txt_stopword = pd.read_csv("stopwords.txt", names= ["stopwords"], header = None)
-
-    # convert stopword string to list & append additional stopword
-    # list_stopwords.extend(txt_stopword["stopwords"][0].split(' '))
-    
-    # Read the stopwords from the txt file
     txt_stopword = pd.read_csv("stopwords.txt", names=["stopwords"], header=None)
-
-    # Convert the stopwords column to a list
     stopword_list = txt_stopword["stopwords"].tolist()
-    # ---------------------------------------------------------------------------------------
-
-    # Extend the list_stopwords with the stopwords from the file   
     list_stopwords.extend(stopword_list)
-    # convert list to dictionary
     list_stopwords = set(list_stopwords)
 
-
-    #remove stopword pada list token
     def stopwords_removal(words):
         return [word for word in words if word not in list_stopwords]
 
-# -----STOPWORD------
-    TWEET_DATA['tweet_tokens_WSW'] = TWEET_DATA['tweet_tokens'].apply(stopwords_removal) 
+    raw_content_df['tweet_tokens_WSW'] = raw_content_df['tweet_tokens'].apply(stopwords_removal)
+    logger.info("Stopwords removed")
 
-
- # ------------------- Normalization -----------------------
-    # normalization_dict = {
-    #     "gak": "tidak", "ga": "tidak", "kalo": "kalau", "klo": "kalau",
-    #     "nya": "dia", "nih": "ini", "sih": "saja", "tau": "tahu",
-    #     "tdk": "tidak", "tuh": "itu", "utk": "untuk", "ya": "iya", "jd": "jadi",
-    #     "jgn": "jangan", "aja": "saja", "dgn": "dengan", "dg": "dengan", "yg": "yang"
-    # }
+    # Normalization
     normalization_dict = {}
-    # with open('normalisasi.txt', 'r') as file:
-    #     for line in file:
-    #         slang, normal = line.strip().split(':')
-    #         normalization_dict[slang] = normal
-    # with open('normalisasi.txt', 'r') as file:
-    #     for line in file:
-    #         if ':' in line:
-    #             slang, normal = line.strip().replace('"', '').split(': ')
-    #             normalization_dict[slang.strip()] = normal.strip()
     with open('normalisasi.txt', 'r') as file:
         for line in file:
             if ':' in line:
@@ -911,34 +1091,30 @@ def preprocessing():
                 if len(parts) == 2:
                     slang, normal = parts
                     normalization_dict[slang.strip()] = normal.strip()
+
     def normalize_text(text):
         return [normalization_dict.get(word, word) for word in text]
 
-    # def normalize_text(text):
-    #     return [normalization_dict[word] if word in normalization_dict else word for word in text]
+    raw_content_df['tweet_tokens_normalized'] = raw_content_df['tweet_tokens_WSW'].apply(normalize_text)
+    logger.info("Text normalization applied")
+    
 
-    TWEET_DATA['tweet_tokens_normalized'] = TWEET_DATA['tweet_tokens_WSW'].apply(normalize_text)
-
-
-    # create stemmer
+    # Stemming
     factory = StemmerFactory()
     stemmer = factory.create_stemmer()
 
-    # stemmed
     def stemmed_wrapper(term):
         return stemmer.stem(term)
 
     term_dict = {}
-
-    # for document in TWEET_DATA['tweet_tokens_WSW']:
-    #     for term in document:
-    #         if term not in term_dict:
-    #             term_dict[term] = ' '
-    for document in TWEET_DATA['tweet_tokens_normalized']:
+    for document in raw_content_df['tweet_tokens_normalized']:
         for term in document:
             if term not in term_dict:
                 term_dict[term] = stemmed_wrapper(term)
 
+    for term in term_dict:
+        term_dict[term] = stemmed_wrapper(term)
+        
     print(len(term_dict))
     print("------------------------")
 
@@ -949,17 +1125,20 @@ def preprocessing():
     print(term_dict)
     print("------------------------")
 
-
-    # apply stemmed term to dataframe
     def get_stemmed_term(document):
         return [term_dict[term] for term in document]
 
-    # -----STEMMING-------
-    TWEET_DATA['tweet_tokens_stemmed'] = TWEET_DATA['tweet_tokens_normalized'].swifter.apply(get_stemmed_term)
-    
-    TWEET_DATA.to_csv("Text_Preprocessing.csv")
-    
+    raw_content_df['tweet_tokens_stemmed'] = raw_content_df['tweet_tokens_normalized'].swifter.apply(get_stemmed_term)
+    logger.info("Stemming applied")
+
+    # Ubah indeks agar dimulai dari 1
+    raw_content_df.index = raw_content_df.index + 1
+    # Save the preprocessed data
+    raw_content_df.to_csv("Text_Preprocessing.csv")
+    logger.info("Preprocessed data saved to CSV")
+
     return "preprocessing berhasil"
+
 
 # API TF-IDF
 @app.route('/tf-idf')
@@ -1019,6 +1198,7 @@ def tfidf():
     
     return "TF-IDF computation completed successfully"
 
+# API TF-IDF
 # API TF-IDF
 @app.route('/tf-idf-2')
 def tfidf2():
@@ -1190,6 +1370,107 @@ def tfidf2():
     
     return "tf-idf sukses"
 
+# API TF-IDF
+@app.route('/tf-idf-3')
+def tfidf3():
+    TWEET_DATA = pd.read_csv("Text_Preprocessing.csv", usecols=["tweet_tokens_stemmed"])
+    TWEET_DATA.columns = ["tweet"]
+
+
+    def convert_text_list(texts):
+        texts = ast.literal_eval(texts)
+        return [text for text in texts]
+
+    TWEET_DATA["tweet_list"] = TWEET_DATA["tweet"].apply(convert_text_list)
+
+    
+    def calc_TF(document):
+        TF_dict = {}
+        for term in document:
+            TF_dict[term] = TF_dict.get(term, 0) + 1
+        for term in TF_dict:
+            TF_dict[term] /= len(document)
+        return TF_dict
+
+    TWEET_DATA["TF_dict"] = TWEET_DATA['tweet_list'].apply(calc_TF)
+
+    def calc_DF(tfDict):
+        count_DF = {}
+        for document in tfDict:
+            for term in document:
+                count_DF[term] = count_DF.get(term, 0) + 1
+        return count_DF
+
+    DF = calc_DF(TWEET_DATA["TF_dict"])
+
+    def calc_IDF(n_document, DF):
+        IDF_Dict = {}
+        for term in DF:
+            IDF_Dict[term] = np.log(n_document / (DF[term] + 1))
+        return IDF_Dict
+
+    n_document = len(TWEET_DATA)
+    IDF = calc_IDF(n_document, DF)
+    
+    def calc_TF_IDF(TF):
+        TF_IDF_Dict = {}
+        for term in TF:
+            TF_IDF_Dict[term] = TF[term] * IDF.get(term, 0)
+        return TF_IDF_Dict
+
+    TWEET_DATA["TF-IDF_dict"] = TWEET_DATA["TF_dict"].apply(calc_TF_IDF)
+
+    sorted_DF = sorted(DF.items(), key=lambda kv: kv[1], reverse=True)[:100]
+    unique_term = [item[0] for item in sorted_DF]
+
+    def calc_TF_IDF_Vec(TF_IDF_Dict):
+        TF_IDF_vector = [0.0] * len(unique_term)
+        for i, term in enumerate(unique_term):
+            if term in TF_IDF_Dict:
+                TF_IDF_vector[i] = TF_IDF_Dict[term]
+        return TF_IDF_vector
+
+    TWEET_DATA["TF_IDF_Vec"] = TWEET_DATA["TF-IDF_dict"].apply(calc_TF_IDF_Vec)
+
+    TF_IDF_Vec_List = np.array(TWEET_DATA["TF_IDF_Vec"].to_list())
+    sums = TF_IDF_Vec_List.sum(axis=0)
+
+    data = [(term, sums[i]) for i, term in enumerate(unique_term)]
+    ranking = pd.DataFrame(data, columns=['term', 'rank']).sort_values('rank', ascending=False)
+
+    def join_text_list(texts):
+        texts = ast.literal_eval(texts)
+        return ' '.join([text for text in texts])
+
+    TWEET_DATA["tweet_join"] = TWEET_DATA["tweet"].apply(join_text_list)
+
+    max_features = 100
+
+    cvect = CountVectorizer(max_features=max_features)
+    TF_vector = cvect.fit_transform(TWEET_DATA["tweet_join"])
+    normalized_TF_vector = normalize(TF_vector, norm='l1', axis=1)
+
+    tfidf = TfidfVectorizer(max_features=max_features, smooth_idf=False)
+    tfs = tfidf.fit_transform(TWEET_DATA["tweet_join"])
+    IDF_vector = tfidf.idf_
+
+    tfidf_mat = normalized_TF_vector.multiply(IDF_vector).toarray()
+
+    cvect = CountVectorizer(max_features=max_features, ngram_range=(1, 3))
+    counts = cvect.fit_transform(TWEET_DATA["tweet_join"])
+    normalized_counts = normalize(counts, norm='l1', axis=1)
+
+    tfidf = TfidfVectorizer(max_features=max_features, ngram_range=(1, 3), smooth_idf=False)
+    tfs = tfidf.fit_transform(TWEET_DATA["tweet_join"])
+
+    tfidf_mat = normalized_counts.multiply(IDF_vector).toarray()
+    dfbtf = pd.DataFrame(data=tfidf_mat, columns=tfidf.get_feature_names_out())
+
+    dfbtf.to_csv("hasil_vector_matrix.csv")
+    
+    return "tf-idf sukses"
+
+
 # API Pelabelan sentimen
 @app.route('/sentimen-pelabelan')
 def pelabelan():
@@ -1217,13 +1498,15 @@ def pelabelan():
             sentiments.append('negatif')
 
     # menambahkan kolom "sentimen" ke dalam dataframe
-    data.loc[data.index.isin(index_zero_status), 'status'] = 0
-    data.loc[~data.index.isin(index_zero_status), 'status'] = 1
+    # data.loc[data.index.isin(index_zero_status), 'status'] = 0
+    # data.loc[~data.index.isin(index_zero_status), 'status'] = 1
     
     # data['aktual'] = sentiments
-    data['aktual'] = data1['status'].apply(lambda x: 'negatif' if x in [1, 2] else 'positif')
-    data['sentimen'] = sentiments
-    data.loc[data['status'] == 0, 'aktual'] = '-'
+    # data['aktual'] = data1['status'].apply(lambda x: 'negatif' if x in [1, 2] else 'positif')
+    data['status'] = data1['status']
+    data['label'] = data1['status'].apply(lambda x: 'negatif' if x in [1, 2] else 'positif')
+    # data['sentimen'] = sentiments
+    # data.loc[data['status'] == 0, 'aktual'] = '-'
     
     data.to_csv("pelabelan.csv", index=False)
 
@@ -1232,6 +1515,315 @@ def pelabelan():
     last_row = data.tail(1)
     data = last_row.to_dict(orient='records')
     return jsonify(data)
+
+# @app.route('/tfidf-and-sentiment-labeling', methods=['GET'])
+# def tfidf_and_sentiment_labeling():
+#     # Baca file teks yang telah dipreprocessing
+#     TWEET_DATA = pd.read_csv("Text_Preprocessing.csv", usecols=["tweet_tokens_stemmed"])
+#     TWEET_DATA.columns = ["tweet"]
+
+#     # Fungsi untuk mengubah teks dalam format list
+#     def convert_text_list(texts):
+#         texts = ast.literal_eval(texts)
+#         return [text for text in texts]
+
+#     # Aplikasikan fungsi pada kolom tweet
+#     TWEET_DATA["tweet_list"] = TWEET_DATA["tweet"].apply(convert_text_list)
+
+#     # Fungsi untuk menghitung Term Frequency (TF)
+#     def calc_TF(document):
+#         TF_dict = {}
+#         for term in document:
+#             TF_dict[term] = TF_dict.get(term, 0) + 1
+#         for term in TF_dict:
+#             TF_dict[term] /= len(document)
+#         return TF_dict
+
+#     # Hitung TF untuk setiap dokumen
+#     TWEET_DATA["TF_dict"] = TWEET_DATA['tweet_list'].apply(calc_TF)
+
+#     # Fungsi untuk menghitung Document Frequency (DF)
+#     def calc_DF(tfDict):
+#         count_DF = {}
+#         for document in tfDict:
+#             for term in document:
+#                 count_DF[term] = count_DF.get(term, 0) + 1
+#         return count_DF
+
+#     # Hitung DF dari TF_dict
+#     DF = calc_DF(TWEET_DATA["TF_dict"])
+
+#     # Fungsi untuk menghitung Inverse Document Frequency (IDF)
+#     def calc_IDF(n_document, DF):
+#         IDF_Dict = {}
+#         for term in DF:
+#             IDF_Dict[term] = np.log(n_document / (DF[term] + 1))
+#         return IDF_Dict
+
+#     # Hitung IDF dari semua dokumen
+#     n_document = len(TWEET_DATA)
+#     IDF = calc_IDF(n_document, DF)
+
+#     # Fungsi untuk menghitung TF-IDF
+#     def calc_TF_IDF(TF):
+#         TF_IDF_Dict = {}
+#         for term in TF:
+#             TF_IDF_Dict[term] = TF[term] * IDF.get(term, 0)
+#         return TF_IDF_Dict
+
+#     # Hitung TF-IDF untuk setiap dokumen
+#     TWEET_DATA["TF-IDF_dict"] = TWEET_DATA["TF_dict"].apply(calc_TF_IDF)
+
+#     # Sort DF untuk mendapatkan kata-kata dengan frekuensi tinggi
+#     sorted_DF = sorted(DF.items(), key=lambda kv: kv[1], reverse=True)[:100]
+#     unique_term = [item[0] for item in sorted_DF]
+
+#     # Fungsi untuk menghasilkan vektor TF-IDF dari TF-IDF dict
+#     def calc_TF_IDF_Vec(TF_IDF_Dict):
+#         TF_IDF_vector = [0.0] * len(unique_term)
+#         for i, term in enumerate(unique_term):
+#             if term in TF_IDF_Dict:
+#                 TF_IDF_vector[i] = TF_IDF_Dict[term]
+#         return TF_IDF_vector
+
+#     # Hitung vektor TF-IDF untuk setiap dokumen
+#     TWEET_DATA["TF_IDF_Vec"] = TWEET_DATA["TF-IDF_dict"].apply(calc_TF_IDF_Vec)
+
+#     # Normalisasi vektor TF untuk mendapatkan matriks TF-IDF
+#     TF_IDF_Vec_List = np.array(TWEET_DATA["TF_IDF_Vec"].to_list())
+#     sums = TF_IDF_Vec_List.sum(axis=0)
+#     data = [(term, sums[i]) for i, term in enumerate(unique_term)]
+#     ranking = pd.DataFrame(data, columns=['term', 'rank']).sort_values('rank', ascending=False)
+
+#     # Fungsi untuk menggabungkan teks dari list
+#     def join_text_list(texts):
+#         texts = ast.literal_eval(texts)
+#         return ' '.join([text for text in texts])
+
+#     # Gabungkan teks dari list
+#     TWEET_DATA["tweet_join"] = TWEET_DATA["tweet"].apply(join_text_list)
+
+#     # Inisialisasi CountVectorizer dan hitung vektor TF
+#     max_features = 100
+#     cvect = CountVectorizer(max_features=max_features)
+#     TF_vector = cvect.fit_transform(TWEET_DATA["tweet_join"])
+#     normalized_TF_vector = normalize(TF_vector, norm='l1', axis=1)
+
+#     # Inisialisasi TfidfVectorizer dan hitung matriks TF-IDF
+#     tfidf = TfidfVectorizer(max_features=max_features, smooth_idf=False)
+#     tfs = tfidf.fit_transform(TWEET_DATA["tweet_join"])
+#     IDF_vector = tfidf.idf_
+
+#     # Normalisasi dan hitung matriks TF-IDF dengan n-grams
+#     cvect_ngrams = CountVectorizer(max_features=max_features, ngram_range=(1, 3))
+#     counts_ngrams = cvect_ngrams.fit_transform(TWEET_DATA["tweet_join"])
+#     normalized_counts_ngrams = normalize(counts_ngrams, norm='l1', axis=1)
+
+#     print("normalized_counts_ngrams shape:", normalized_counts_ngrams.shape)
+#     print("IDF_vector shape:", IDF_vector.shape)
+    
+#     # Ubah bentuk IDF_vector jika perlu
+#     if IDF_vector.shape[0] != normalized_counts_ngrams.shape[1]:
+#         IDF_vector = np.reshape(IDF_vector, (1, -1))
+
+#     print("IDF_vector reshaped shape:", IDF_vector.shape)
+    
+#      # Hitung tfidf_mat_ngrams
+#     tfidf_mat_ngrams = normalized_counts_ngrams.multiply(IDF_vector).toarray()
+
+
+#     tfidf_ngrams = TfidfVectorizer(max_features=max_features, ngram_range=(1, 3), smooth_idf=False)
+#     tfs_ngrams = tfidf_ngrams.fit_transform(TWEET_DATA["tweet_join"])
+#     tfidf_mat_ngrams = normalized_counts_ngrams.multiply(IDF_vector)
+
+#     # Simpan matriks TF-IDF ke dalam file
+#     # dfbtf = pd.DataFrame(data=tfidf_mat_ngrams.toarray(), columns=tfidf_ngrams.get_feature_names_out())
+#     dfbtf = pd.DataFrame(data=tfidf_mat_ngrams, columns=tfidf_ngrams.get_feature_names_out())
+#     dfbtf.to_csv("hasil_vector_matrix.csv", index=False)
+
+#     # Gabungkan hasil labeling dengan data tweet asli
+#     data_tweet = pd.read_csv('data_tweet.csv')
+
+#     dfbtf['status'] = data_tweet['status']
+#     dfbtf['label'] = data_tweet['status'].apply(lambda x: 'negatif' if x in [1, 2] else 'positif')
+#     # Simpan hasil pelabelan ke dalam file
+#     dfbtf.to_csv("pelabelan.csv", index=False)
+
+#     # Ambil data terakhir untuk respons API
+#     last_row_data = dfbtf.tail(1).to_dict(orient='records')
+
+#     return jsonify(last_row_data)
+
+
+@app.route('/tfidf-and-sentiment-labeling', methods=['GET'])
+def tfidf_and_sentiment_labeling():
+    try:
+        # Baca file teks yang telah dipreprocessing
+        TWEET_DATA = pd.read_csv("Text_Preprocessing.csv", usecols=["tweet_tokens_stemmed"])
+        TWEET_DATA.columns = ["tweet"]
+
+        logging.debug("Loaded TWEET_DATA: %s", TWEET_DATA.head())
+
+        # Fungsi untuk mengubah teks dalam format list
+        def convert_text_list(texts):
+            return ast.literal_eval(texts)
+
+        # Aplikasikan fungsi pada kolom tweet
+        TWEET_DATA["tweet_list"] = TWEET_DATA["tweet"].apply(convert_text_list)
+
+        logging.debug("Converted text to list: %s", TWEET_DATA["tweet_list"].head())
+
+        # Fungsi untuk menghitung Term Frequency (TF)
+        def calc_TF(document):
+            TF_dict = {}
+            for term in document:
+                TF_dict[term] = TF_dict.get(term, 0) + 1
+            for term in TF_dict:
+                TF_dict[term] /= len(document)
+            return TF_dict
+
+        # Hitung TF untuk setiap dokumen
+        TWEET_DATA["TF_dict"] = TWEET_DATA['tweet_list'].apply(calc_TF)
+
+        logging.debug("Calculated TF_dict: %s", TWEET_DATA["TF_dict"].head())
+
+        # Fungsi untuk menghitung Document Frequency (DF)
+        def calc_DF(tfDict):
+            count_DF = {}
+            for document in tfDict:
+                for term in document:
+                    count_DF[term] = count_DF.get(term, 0) + 1
+            return count_DF
+
+        # Hitung DF dari TF_dict
+        DF = calc_DF(TWEET_DATA["TF_dict"])
+
+        logging.debug("Calculated DF: %s", DF)
+
+        # Fungsi untuk menghitung Inverse Document Frequency (IDF)
+        def calc_IDF(n_document, DF):
+            IDF_Dict = {}
+            for term in DF:
+                IDF_Dict[term] = np.log(n_document / (DF[term] + 1))
+            return IDF_Dict
+
+        # Hitung IDF dari semua dokumen
+        n_document = len(TWEET_DATA)
+        IDF = calc_IDF(n_document, DF)
+
+        logging.debug("Calculated IDF: %s", IDF)
+
+        # Fungsi untuk menghitung TF-IDF
+        def calc_TF_IDF(TF):
+            TF_IDF_Dict = {}
+            for term in TF:
+                TF_IDF_Dict[term] = TF[term] * IDF.get(term, 0)
+            return TF_IDF_Dict
+
+        # Hitung TF-IDF untuk setiap dokumen
+        TWEET_DATA["TF-IDF_dict"] = TWEET_DATA["TF_dict"].apply(calc_TF_IDF)
+
+        logging.debug("Calculated TF-IDF_dict: %s", TWEET_DATA["TF-IDF_dict"].head())
+
+        # Sort DF untuk mendapatkan kata-kata dengan frekuensi tinggi
+        sorted_DF = sorted(DF.items(), key=lambda kv: kv[1], reverse=True)[:100]
+        unique_term = [item[0] for item in sorted_DF]
+
+        logging.debug("Sorted DF and unique terms: %s", unique_term)
+
+        # Fungsi untuk menghasilkan vektor TF-IDF dari TF-IDF dict
+        def calc_TF_IDF_Vec(TF_IDF_Dict):
+            TF_IDF_vector = [0.0] * len(unique_term)
+            for i, term in enumerate(unique_term):
+                if term in TF_IDF_Dict:
+                    TF_IDF_vector[i] = TF_IDF_Dict[term]
+            return TF_IDF_vector
+
+        # Hitung vektor TF-IDF untuk setiap dokumen
+        TWEET_DATA["TF_IDF_Vec"] = TWEET_DATA["TF-IDF_dict"].apply(calc_TF_IDF_Vec)
+
+        logging.debug("Calculated TF_IDF_Vec: %s", TWEET_DATA["TF_IDF_Vec"].head())
+
+        # Normalisasi vektor TF untuk mendapatkan matriks TF-IDF
+        TF_IDF_Vec_List = np.array(TWEET_DATA["TF_IDF_Vec"].to_list())
+        sums = TF_IDF_Vec_List.sum(axis=0)
+        data = [(term, sums[i]) for i, term in enumerate(unique_term)]
+        ranking = pd.DataFrame(data, columns=['term', 'rank']).sort_values('rank', ascending=False)
+
+        logging.debug("Normalized TF vectors and ranking: %s", ranking.head())
+
+        # Fungsi untuk menggabungkan teks dari list
+        def join_text_list(texts):
+            return ' '.join(ast.literal_eval(texts))
+
+        # Gabungkan teks dari list
+        TWEET_DATA["tweet_join"] = TWEET_DATA["tweet"].apply(join_text_list)
+
+        logging.debug("Joined text lists: %s", TWEET_DATA["tweet_join"].head())
+
+        # max_features = request.args.get('max_features', default=100, type=int)
+        # Inisialisasi CountVectorizer dan hitung vektor TF
+        max_features = 50
+        cvect = CountVectorizer(max_features=max_features)
+        TF_vector = cvect.fit_transform(TWEET_DATA["tweet_join"])
+        normalized_TF_vector = normalize(TF_vector, norm='l1', axis=1)
+
+        logging.debug("Calculated normalized TF vector shape: %s", normalized_TF_vector.shape)
+
+        # Inisialisasi TfidfVectorizer dan hitung matriks TF-IDF
+        tfidf = TfidfVectorizer(max_features=max_features, smooth_idf=False)
+        tfs = tfidf.fit_transform(TWEET_DATA["tweet_join"])
+        IDF_vector = tfidf.idf_
+
+        logging.debug("Calculated IDF vector shape: %s", IDF_vector.shape)
+
+        # Normalisasi dan hitung matriks TF-IDF dengan n-grams
+        cvect_ngrams = CountVectorizer(max_features=max_features, ngram_range=(1, 3))
+        counts_ngrams = cvect_ngrams.fit_transform(TWEET_DATA["tweet_join"])
+        normalized_counts_ngrams = normalize(counts_ngrams, norm='l1', axis=1)
+
+        logging.debug("Calculated normalized counts n-grams shape: %s", normalized_counts_ngrams.shape)
+        
+        # Ubah bentuk IDF_vector jika perlu
+        # if IDF_vector.shape[0] != normalized_counts_ngrams.shape[1]:
+        IDF_vector = np.reshape(IDF_vector, (1, -1))
+
+        logging.debug("IDF_vector reshaped shape: %s", IDF_vector.shape)
+        
+        # Hitung tfidf_mat_ngrams
+        tfidf_mat_ngrams = normalized_counts_ngrams.multiply(IDF_vector).toarray()
+
+        tfidf_ngrams = TfidfVectorizer(max_features=max_features, ngram_range=(1, 3), smooth_idf=False)
+        tfs_ngrams = tfidf_ngrams.fit_transform(TWEET_DATA["tweet_join"])
+        tfidf_mat_ngrams = normalized_counts_ngrams.multiply(IDF_vector)
+
+        logging.debug("Calculated tfidf_mat_ngrams shape: %s", tfidf_mat_ngrams.shape)
+
+        # Simpan matriks TF-IDF ke dalam file
+        dfbtf = pd.DataFrame(data=tfidf_mat_ngrams.toarray(), columns=tfidf_ngrams.get_feature_names_out())
+        dfbtf.to_csv("hasil_vector_matrix.csv", index=False)
+
+        logging.debug("Saved hasil_vector_matrix.csv")
+
+        # Gabungkan hasil labeling dengan data tweet asli
+        data_tweet = pd.read_csv('data_tweet.csv')
+
+        dfbtf['status'] = data_tweet['status']
+        dfbtf['label'] = data_tweet['status'].apply(lambda x: 'negatif' if x in [1, 2] else 'positif')
+        # Simpan hasil pelabelan ke dalam file
+        dfbtf.to_csv("pelabelan.csv", index=False)
+
+        logging.debug("Saved pelabelan.csv")
+
+        # Ambil data terakhir untuk respons API
+        last_row_data = dfbtf.tail(1).to_dict(orient='records')
+
+        return jsonify(last_row_data)
+    
+    except Exception as e:
+        logging.error("Error occurred: %s", e)
+        return jsonify({"error": str(e)}), 500
+
 
 # approve status
 @app.route('/approve-status', methods=['POST'])
