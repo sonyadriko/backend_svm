@@ -1724,6 +1724,12 @@ def tfidf_and_sentiment_labeling():
         TWEET_DATA["TF-IDF_dict"] = TWEET_DATA["TF_dict"].apply(calc_TF_IDF)
 
         logging.debug("Calculated TF-IDF_dict: %s", TWEET_DATA["TF-IDF_dict"].head())
+        
+        index = TWEET_DATA.shape[0]
+
+        print('%20s' % "term", "\t", '%10s' % "TF", "\t", '%20s' % "TF-IDF\n")
+        for key in TWEET_DATA["TF-IDF_dict"][index-1]:
+            print('%20s' % key, "\t", TWEET_DATA["TF_dict"][index-1][key] ,"\t" , TWEET_DATA["TF-IDF_dict"][index-1][key])
 
         # Sort DF untuk mendapatkan kata-kata dengan frekuensi tinggi
         sorted_DF = sorted(DF.items(), key=lambda kv: kv[1], reverse=True)[:100]
@@ -1796,6 +1802,17 @@ def tfidf_and_sentiment_labeling():
         tfidf_ngrams = TfidfVectorizer(max_features=max_features, ngram_range=(1, 3), smooth_idf=False)
         tfs_ngrams = tfidf_ngrams.fit_transform(TWEET_DATA["tweet_join"])
         tfidf_mat_ngrams = normalized_counts_ngrams.multiply(IDF_vector)
+        
+        type(counts_ngrams)
+        counts_ngrams.shape
+        
+        print(tfidf.vocabulary_)
+        
+        print(tfidf.get_feature_names_out())
+        a=tfidf.get_feature_names_out()
+        
+        print(tfs.toarray())
+        b=tfs.toarray()
 
         logging.debug("Calculated tfidf_mat_ngrams shape: %s", tfidf_mat_ngrams.shape)
 
