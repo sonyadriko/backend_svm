@@ -626,15 +626,29 @@ def countDataTraining():
     return jsonify(result)
 
     
-# API data training
 @app.route('/data-training')
 def dataTraining():
     TWEET_DATA = pd.read_csv("data_tweet.csv", usecols=['rawContent', 'status'])
-    # filtered_data = TWEET_DATA[TWEET_DATA['status'] == 1]
-    data = TWEET_DATA['rawContent'].to_list()
-    
-    return jsonify(data)
-     
+    data = TWEET_DATA.to_dict(orient='records')
+
+    positif_count = 0
+    negatif_count = 0
+
+    for entry in data:
+        if entry['status'] in [1, 2]:
+            entry['status'] = 'Negatif'
+            negatif_count += 1
+        else:
+            entry['status'] = 'Positif'
+            positif_count += 1
+
+    response = {
+        'data': data,
+        'positif_count': positif_count,
+        'negatif_count': negatif_count
+    }
+
+    return jsonify(response)
   # Memeriksa ekstensi file
  
     # TWEET_DATA = pd.read_excel("data_tweet.csv", usecols=['rawContent', 'status'])
