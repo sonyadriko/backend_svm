@@ -9,7 +9,8 @@ import pandas as pd
 import numpy as np
 import string 
 import re #regex library
-
+import csv
+import math
 # import word_tokenize & FreqDist from NLTK
 from nltk.tokenize import word_tokenize 
 from nltk.probability import FreqDist
@@ -537,37 +538,6 @@ def SVM():
     except Exception as e:
         app.logger.error(f"Kesalahan dalam memproses permintaan SVM: {str(e)}")
         return jsonify({"error": f"Kesalahan dalam memproses permintaan SVM: {str(e)}"}), 500
-# API KNN
-@app.route('/knn')
-def KNN():
-    df = pd.read_csv("hasil_vector_matrix.csv", header=None)
-
-    X = df.iloc[1:, :-1].values
-    y = df.iloc[1:, -2].values
-    XNum = X.astype(np.float64)
-    yNum = y.astype(np.float64)
-
-    similarities = cosine_similarity(XNum, XNum)
-
-    k = 3
-
-    nearest_neighbors = np.zeros((len(XNum), k), dtype=int)
-
-    for i in range(len(XNum)):
-        nearest_indices = np.argsort(similarities[i])[-k-1:-1][::-1]
-        nearest_neighbors[i] = yNum[nearest_indices]
-
-    predictions = np.zeros(len(XNum), dtype=int)
-
-    for i in range(len(XNum)):
-        prediction = np.argmax(np.bincount(nearest_neighbors[i]))
-        predictions[i] = prediction
-
-    accuracy = np.mean(predictions == yNum)
-    ranking = np.argsort(similarities, axis=1)[:, ::-1]
-
-    return jsonify(accuracy=accuracy, ranking=ranking.tolist())
-
 
 
 # API tambah tweet to CSV
@@ -994,6 +964,715 @@ def dataChart():
     
 #     return "preprocessing berhasil"
 
+
+class Preprocessor:
+    def __init__(self):
+        # Load stopwords from file
+        self.stoplist = set(pd.read_csv("stopwords.txt", names=["stopwords"], header=None)['stopwords'])
+        
+        # Load normalization dictionary from file
+        self.normalization_dict = {}
+        with open('normalisasi.txt', 'r') as file:
+            for line in file:
+                if ':' in line:
+                    parts = line.strip().replace('"', '').split(': ')
+                    if len(parts) == 2:
+                        slang, normal = parts
+                        self.normalization_dict[slang.strip()] = normal.strip()
+    
+    def preprocess(self, df):
+        if 'rawContent' not in df.columns:
+            raise ValueError("The DataFrame does not contain the 'rawContent' column.")
+        
+        # Case Folding
+        df['rawContent'] = df['rawContent'].str.lower()
+        
+        # Data Cleaning
+        df['rawContent'] = df['rawContent'].apply(lambda x: re.sub(r'(\A|\s)@(\w+)|(^https?:\/\/.*[\r\n]*)|(\A|\s)[0-9](\w+)|(\d)', " ", x))
+        df['rawContent'] = df['rawContent'].apply(lambda x: re.sub(r'\d', " ", x))
+        df['rawContent'] = df['rawContent'].apply(lambda x: re.sub(r'[.?%&^*!()/,`~;:< >#]', " ", x))
+        
+        # Normalisasi
+        def normalize_text(text):
+            words = text.split()
+            normalized_words = [self.normalization_dict.get(word, word) for word in words]
+            return ' '.join(normalized_words)
+        
+        df['rawContent'] = df['rawContent'].apply(normalize_text)
+        
+        # Stopword Removal
+        df['rawContent'] = df['rawContent'].apply(lambda x: " ".join(word for word in x.split() if word not in self.stoplist))
+        
+        # Tokenization
+        df['rawContent'] = df['rawContent'].apply(lambda x: x.split())
+        
+        return df
+    
+    # def preprocess2(self, text):
+    #     # Case Folding
+    #     text = text.lower()
+        
+    #     # Data Cleaning
+    #     text = re.sub(r'(\A|\s)@(\w+)|(^https?:\/\/.*[\r\n]*)|(\A|\s)[0-9](\w+)|(\d)', " ", text)
+    #     text = re.sub(r'\d', " ", text)
+    #     text = re.sub(r'[.?%&^*!()/,`~;:< >#]', " ", text)
+        
+    #     # Normalization
+    #     def normalize_text(text):
+    #         words = text.split()
+    #         normalized_words = [self.normalization_dict.get(word, word) for word in words]
+    #         return ' '.join(normalized_words)
+        
+    #     text = normalize_text(text)
+        
+    #     # Stopword Removal
+    #     text = " ".join(word for word in text.split() if word not in self.stoplist)
+        
+    #     # Tokenization
+    #     text = text.split()
+        
+    #     return text
+    
+    def preprocess2(self, text):
+        # Proses preprocessing untuk satu data teks
+        processed_text = self.preprocess_single(text)
+        return processed_text
+
+    def preprocess_single(self, text):
+        # Implementasi lengkap dari preprocessing untuk satu data teks
+        # Lakukan case folding, data cleaning, normalisasi, stopword removal, dan tokenization
+        processed_text = text.lower()
+        processed_text = re.sub(r'(\A|\s)@(\w+)|(^https?:\/\/.*[\r\n]*)|(\A|\s)[0-9](\w+)|(\d)', " ", processed_text)
+        processed_text = re.sub(r'\d', " ", processed_text)
+        processed_text = re.sub(r'[.?%&^*!()/,`~;:< >#]', " ", processed_text)
+        processed_text = self.normalize_text(processed_text)
+        processed_text = " ".join(word for word in processed_text.split() if word not in self.stoplist)
+        processed_text = processed_text.split()
+        
+        return processed_text
+
+    def normalize_text(self, text):
+        # Normalisasi teks
+        words = text.split()
+        normalized_words = [self.normalization_dict.get(word, word) for word in words]
+        return ' '.join(normalized_words)
+    
+    def fitur_kata(self, hasil_preprocessing):
+        fitur = []
+        for i in range(len(hasil_preprocessing)):
+            for word in hasil_preprocessing[i][0]:
+                if word not in fitur:
+                    fitur.append(word)
+        return fitur
+
+    def tf(self, hasil_preprocessing, fitur):
+        tf = []
+        for i in range(len(fitur)):
+            temp= []
+            for j in range(len(hasil_preprocessing)):
+                temp.append(hasil_preprocessing[j][0].count(fitur[i]))
+            tf.append(temp)
+        return tf
+
+    def wtf(self, tf):
+        wtf = []
+        for i in range(len(tf)):
+            temp= []
+            for j in range(len(tf[i])):
+                hasil = 0
+                if tf[i][j] > 0:
+                    hasil = 1 + math.log10(tf[i][j])
+                temp.append(hasil)
+            wtf.append(temp)
+        return wtf
+
+    # def dfidf(self, tf):
+    #     df = []
+    #     idf = []
+    #     for i in range(len(tf)):
+    #         hasil_df = 0
+    #         for j in range(len(tf[i])):
+    #             if tf[i][j] > 0:
+    #                 hasil_df = tf[i][j] + hasil_df
+    #         hasil_idf = math.log10(float((len(tf[i])))/float(hasil_df))
+    #         df.append(hasil_df)
+    #         idf.append(hasil_idf)
+    #     return df, idf
+    def dfidf(self, tf):
+        idf = []
+        for i in range(len(tf)):
+            hasil_df = 0
+            for j in range(len(tf[i])):
+                if tf[i][j] > 0:
+                    hasil_df = tf[i][j] + hasil_df
+            hasil_idf = math.log10(float((len(tf[i])))/float(hasil_df))
+            idf.append(hasil_idf)
+        return idf
+
+    def tfidf(self, wtf, idf):
+        tfidf = []
+        for i in range(len(idf)):
+            temp = []
+            for j in range(len(wtf[i])):
+                if wtf[i][j] > 0:
+                    hasil = wtf[i][j] * idf[i]
+                    temp.append(hasil)
+                else:
+                    temp.append(0)
+            tfidf.append(temp)
+        return tfidf
+
+
+    # def tfidf(self, wtf, idf):
+    #     tfidf = []
+    #     for i in range(len(idf)):
+    #         temp = []
+    #         for j in range(len(wtf[i])):
+    #             if wtf[i][j] > 0:
+    #                 hasil = wtf[i][j] * idf[i]
+    #                 temp.append(hasil)
+    #             else:
+    #                 temp.append(0)
+    #         tfidf.append(temp)
+    #     return tfidf
+
+    def transpose(self, tfidf):
+        transpose = []
+        for i in range(len(tfidf[0])):
+            temp = []
+            for j in range(len(tfidf)):
+                temp.append(tfidf[j][i])
+            transpose.append(temp)
+        return transpose
+    
+    def kernel(self, mat, trans, d):
+        c = 1
+        mat_kernel = []
+        for i in range(len(trans)):
+            temp = []
+            for j in range(len(mat)):
+                total = 0
+                for x in range(len(trans[0])):
+                    try:
+                        hasil = trans[i][x] * mat[x][j]
+                    except IndexError as e:
+                        print(f"IndexError at trans[{i}][{x}] and mat[{x}][{j}]: {e}")
+                        raise
+                    total += hasil
+                tambah_c = total + c
+                hasil_pangkat = math.pow(tambah_c, d)
+                kernel = hasil_pangkat
+                temp.append(kernel)
+            mat_kernel.append(temp)
+        return mat_kernel
+    
+    # def kernel(trans, mat, d):
+    #     # Print ukuran matriks untuk debugging
+    #     print(f"Ukuran trans: {len(trans)}x{len(trans[0])} (if not empty)")
+    #     print(f"Ukuran mat: {len(mat)}x{len(mat[0])} (if not empty)")
+
+    #     mat_kernel = []
+    #     try:
+    #         for i in range(len(trans)):
+    #             row_result = []
+    #             for j in range(len(mat[0])):  # mat[0] to get the number of columns in mat
+    #                 total = 0
+    #                 for x in range(len(trans[i])):  # Length of a row in trans
+    #                     total += trans[i][x] * mat[x][j]
+    #                 row_result.append(total)
+    #             mat_kernel.append(row_result)
+    #     except IndexError as e:
+    #         print(f"IndexError: {e}")
+    #         print(f"Error at trans[{i}][{x}] and mat[{x}][{j}]")
+    #         raise
+        
+    #     return mat_kernel
+
+
+    # def kernel(self, trans, mat, d):
+    #     # Pastikan ukuran list sesuai
+    #     print(f"Size of trans: {len(trans)}")
+    #     if len(trans) > 0:
+    #         print(f"Size of trans[0]: {len(trans[0])}")
+        
+    #     print(f"Size of mat: {len(mat)}")
+    #     if len(mat) > 0:
+    #         print(f"Size of mat[0]: {len(mat[0])}")
+
+    #     hasil = 0
+    #     for i in range(len(trans)):
+    #         for j in range(len(mat[0])):
+    #             for x in range(len(trans[0])):
+    #                 # Tambahkan validasi indeks
+    #                 if x < len(mat) and j < len(mat[x]):
+    #                     hasil += trans[i][x] * mat[x][j]
+    #                 else:
+    #                     print(f"Index out of range: trans[{i}][{x}], mat[{x}][{j}]")
+
+    #     return hasil
+
+
+    # def hessian(kelas, kernel):
+    #     lamda = 0.5
+    #     hessian = []
+    #     for i in range(len(kernel)):
+    #         temp = []
+    #         for j in range(len(kernel[0])):
+    #             hess = kelas[i] * kelas[j] * kernel[i][j] + (math.pow(lamda, 2))
+    #             temp.append(hess)
+    #         hessian.append(temp)
+    #     return hessian
+
+    def hessian(self, kelas, kernel):
+        lamda = 0.5
+        hessian = []
+        if isinstance(kernel, list) and all(isinstance(row, list) for row in kernel):
+            for i in range(len(kernel)):
+                temp = []
+                for j in range(len(kernel[0])):
+                    hess = kelas[i] * kelas[j] * kernel[i][j] + (math.pow(lamda, 2))
+                    temp.append(hess)
+                hessian.append(temp)
+        else:
+            raise TypeError("Expected kernel to be a list of lists (matrix)")
+        return hessian
+
+
+
+    def sequential(self, hessian, itermax, lr):
+        epsilon = 0.0001
+        c = 1
+        alfa = [[0] * len(hessian)]
+        E = []
+        delta_a = []
+        for _ in range(itermax):
+            temp_e = []
+            temp_d = []
+            temp_a = []
+            for j in range(len(hessian)):
+                total = 0
+                for x in range(len(hessian[0])):
+                    total += hessian[j][x] * alfa[-1][x]
+                temp_e.append(total)
+            E.append(temp_e)
+            for x in range(len(E[-1])):
+                hasil = min(max(lr * (1 - E[-1][x]), -alfa[-1][x]), c - alfa[-1][x])
+                temp_d.append(hasil)
+            delta_a.append(temp_d)
+            for x in range(len(temp_d)):
+                hasil = alfa[-1][x] + delta_a[-1][x]
+                temp_a.append(hasil)
+            alfa.append(temp_a)
+        return E[-1], delta_a[-1], alfa[-1]
+
+    # def bias(self, matrix, sv, kelas, d):
+    #     c = 1
+    #     xpos = xneg = 0
+    #     for i in range(len(kelas)):
+    #         if kelas[i] == -1:
+    #             xneg = max(xneg, sv[i])
+    #         elif kelas[i] == 1:
+    #             xpos = max(xpos, sv[i])
+    #     alpos = sv.index(xpos)
+    #     alneg = sv.index(xneg)
+    #     sigmapos = sigmaneg = 0
+    #     for i in range(len(kelas)):
+    #         totpos = totneg = 0
+    #         for j in range(len(matrix[i])):
+    #             totpos += matrix[i][j] * matrix[alpos][j]
+    #             totneg += matrix[i][j] * matrix[alneg][j]
+    #         kernelpos = math.pow((totpos + c), d)
+    #         kernelneg = math.pow((totneg + c), d)
+    #         h_pos = sv[i] * kelas[i] * kernelpos
+    #         h_neg = sv[i] * kelas[i] * kernelneg
+    #         sigmapos += h_pos
+    #         sigmaneg += h_neg
+    #     bias_value = -0.5 * (sigmapos + sigmaneg)
+    #     return bias_value
+    
+    # def bias(self, matrix, sv, kelas, d):
+    #     c = 1
+    #     xpos = None
+    #     xneg = None
+        
+    #     # Find maximum sv for class 1
+    #     for i in range(len(kelas)):
+    #         if kelas[i] == 1:
+    #             if xpos is None or sv[i] > sv[xpos]:
+    #                 xpos = i
+        
+    #     # Find maximum sv for class -1
+    #     for i in range(len(kelas)):
+    #         if kelas[i] == -1:
+    #             if xneg is None or sv[i] > sv[xneg]:
+    #                 xneg = i
+        
+    #     if xpos is None or xneg is None:
+    #         raise ValueError("No suitable support vectors found for classes 1 or -1.")
+        
+    #     alpos = xpos
+    #     alneg = xneg
+        
+    #     sigmapos = sigmaneg = 0
+        
+    #     for i in range(len(kelas)):
+    #         totpos = totneg = 0
+            
+    #         for j in range(len(matrix[i])):
+    #             totpos += matrix[i][j] * matrix[alpos][j]
+    #             totneg += matrix[i][j] * matrix[alneg][j]
+            
+    #         kernelpos = math.pow((totpos + c), d)
+    #         kernelneg = math.pow((totneg + c), d)
+            
+    #         h_pos = sv[i] * kelas[i] * kernelpos
+    #         h_neg = sv[i] * kelas[i] * kernelneg
+            
+    #         sigmapos += h_pos
+    #         sigmaneg += h_neg
+        
+    #     bias_value = -0.5 * (sigmapos + sigmaneg)
+        
+    #     return bias_value
+
+    def bias(self, matrix, sv, kelas, d):
+        c = 1
+        xpos = xneg = None
+        
+        # Find maximum sv for class 1
+        for i in range(len(kelas)):
+            if kelas[i] == 1:
+                if xpos is None or sv[i] > sv[xpos]:
+                    xpos = i
+        
+        # Find maximum sv for class -1
+        for i in range(len(kelas)):
+            if kelas[i] == -1:
+                if xneg is None or sv[i] > sv[xneg]:
+                    xneg = i
+        
+        if xpos is None or xneg is None:
+            raise ValueError("No suitable support vectors found for classes 1 or -1. Please check your SVM model input.")
+        
+        alpos = xpos
+        alneg = xneg
+        
+        sigmapos = sigmaneg = 0
+        
+        for i in range(len(kelas)):
+            totpos = totneg = 0
+            
+            if alpos < len(matrix):
+                for j in range(len(matrix[i])):
+                    totpos += matrix[i][j] * matrix[alpos][j]
+            
+            if alneg < len(matrix):
+                for j in range(len(matrix[i])):
+                    totneg += matrix[i][j] * matrix[alneg][j]
+            
+            kernelpos = math.pow((totpos + c), d)
+            kernelneg = math.pow((totneg + c), d)
+            
+            h_pos = sv[i] * kelas[i] * kernelpos
+            h_neg = sv[i] * kelas[i] * kernelneg
+            
+            sigmapos += h_pos
+            sigmaneg += h_neg
+        
+        bias_value = -0.5 * (sigmapos + sigmaneg)
+        
+        return bias_value
+
+
+
+    # def datatesting(self, kelas, matrix, trans, d, alfa, bias):
+    #     c = 1
+    #     hasiltes = []
+    #     hasilkelas = []
+    #     for i in range(len(matrix[0])):
+    #         temp = []
+    #         for j in range(len(kelas)):
+    #             total = 0
+    #             for x in range(len(matrix[i])):
+    #                 total += trans[i][x] * matrix[x][j]
+    #             kernel_value = math.pow((total + c), d)
+    #             hasil = alfa[j] * kelas[j] * kernel_value
+    #             temp.append(hasil)
+    #         jumlah = sum(temp) + bias
+    #         hasiltes.append(jumlah)
+    #         klas = 1 if jumlah > 0 else -1
+    #         hasilkelas.append(klas)
+    #     return hasiltes, hasilkelas
+    
+    def datatesting(self, kelas, matrix, trans, d, alfa, bias):
+        c = 1
+        hasiltes = []
+        hasilkelas = []
+        
+        # Periksa panjang trans
+        if len(trans) <= 0 or len(trans[0]) <= 0 or len(matrix) <= 0 or len(matrix[0]) <= 0:
+            raise ValueError("Matrix dimensions are not valid.")
+        
+        for i in range(len(matrix[0])):
+            temp = []
+            
+            # Pastikan i dalam rentang yang valid
+            if i < len(trans):
+                for j in range(len(kelas)):
+                    total = 0
+                    for x in range(len(trans[i])):
+                        total += trans[i][x] * matrix[x][j]
+                    
+                    kernel_value = math.pow((total + c), d)
+                    hasil = alfa[j] * kelas[j] * kernel_value
+                    temp.append(hasil)
+                
+                jumlah = sum(temp) + bias
+                hasiltes.append(jumlah)
+                klas = 1 if jumlah > 0 else -1
+                hasilkelas.append(klas)
+            else:
+                # Handle jika i melebihi panjang trans
+                print(f"Index out of range: trans[{i}]")
+        
+        return hasiltes, hasilkelas
+
+
+
+
+@app.route('/preprocessingbaru')
+def preprocessingbaru():
+    # Load data from CSV
+    TWEET_DATA = pd.read_csv("data_tweet.csv")
+    
+    # Drop columns except 'rawContent'
+    raw_content_df = TWEET_DATA.drop(columns=[col for col in TWEET_DATA.columns if col != 'rawContent'])
+    
+    # Create an instance of the Preprocessor class
+    preprocessor = Preprocessor()
+    
+    # Process the DataFrame
+    processed_df = preprocessor.preprocess(raw_content_df)
+    
+    # Adjust the index to start from 1
+    processed_df.index = processed_df.index + 1
+    
+    # Save the preprocessed data to a CSV file
+    processed_df.to_csv("Text_Preprocessing.csv", index=True)
+    
+    # Convert DataFrame to dictionary for JSON response
+    processed_data = processed_df.to_dict(orient='records')
+    
+    return jsonify(processed_data)
+
+@app.route('/combined', methods=['POST'])
+def combined_route():
+    data = request.json
+    data_testing = data.get('rawContent')
+    # data_testing = data.get('data_testing')rawContent
+    d = data.get('d')
+    itermax = data.get('itermax')
+    lr = data.get('lr')
+
+    print(data_testing)
+    # Load preprocessed data from CSV
+    processed_df = pd.read_csv("Text_Preprocessing.csv")
+    
+    # Extract the list of preprocessed tokens
+    hasil_preprocessing = processed_df[['tweet_tokens_stemmed']].values.tolist()
+    
+    # Create an instance of the Preprocessor class
+    preprocessor = Preprocessor()
+    
+    # Calculate features, tf, wtf, df, idf, tfidf
+    fitur = preprocessor.fitur_kata(hasil_preprocessing)
+    tf = preprocessor.tf(hasil_preprocessing, fitur)
+    wtf = preprocessor.wtf(tf)
+    idf = preprocessor.dfidf(tf)
+    tfidf = preprocessor.tfidf(wtf, idf)
+    
+    # # Load training data from CSV
+    training_data_df = pd.read_csv("data_tweet.csv")
+    
+    # # Extract training class
+    kelas = training_data_df['kelas'].tolist()
+    # Convert 'Negatif' and 'Positif' to numeric values
+    kelas = [1 if k == 'Positif' else -1 for k in kelas]
+
+    # Transpose TF-IDF matrix
+    transposed_tfidf = preprocessor.transpose(tfidf)
+    
+   # Calculate kernel, hessian, sequential
+   # Calculate kernel using the updated method
+    kernel_matrix = preprocessor.kernel(tfidf, transposed_tfidf, d)
+    # kernel_matrix = preprocessor.kernel(transposed_tfidf, tfidf, d)
+    hessian_matrix = preprocessor.hessian(kelas, kernel_matrix)
+    E, delta_a, alfa = preprocessor.sequential(hessian_matrix, itermax, lr)
+    
+    # Calculate bias
+    bias_value = preprocessor.bias(tfidf, alfa, kelas, d)
+    
+
+    # test_data = "Banyak sekali pemain yg saling ejek dalam sesama team match, mereka tidak mengerti permasalahan pada pemain satu tim, kebanyakan yg jaringan lag,ketika kita mau melakukan ultimate skill tiba2 skill gak keluar dan akhirnya kita mati, seperti nya sdah sangat di atur sekali oleh sistem,hp apapun, berapa pun RAM dan ROM nya,dan melalui jaring"
+    # test_df = pd.DataFrame(data_testing)
+    
+    # test_hasil_preprocessing = preprocessed_test_df.values.tolist()
+    # Ubah hasil preprocessing menjadi DataFrame jika diperlukan
+    # test_df = pd.DataFrame({'rawContent': [preprocessed_test_df]})
+
+    preprocessed_test_df = preprocessor.preprocess2(data_testing)
+    print(preprocessed_test_df)
+    # Calculate features, tf, wtf, df, idf, tfidf for test data
+    test_fitur = preprocessor.fitur_kata(preprocessed_test_df)
+    test_tf = preprocessor.tf(preprocessed_test_df, test_fitur)
+    test_wtf = preprocessor.wtf(test_tf)
+    test_idf = preprocessor.dfidf(test_tf)
+    test_tfidf = preprocessor.tfidf(test_wtf, test_idf)
+    
+    # Transpose TF-IDF matrix for test data
+    transposed_test_tfidf = preprocessor.transpose(test_tfidf)
+    
+    # Perform data testing
+    hasiltes, hasilkelas = preprocessor.datatesting(kelas, tfidf, transposed_test_tfidf, d, alfa, bias_value)
+    
+    response = {
+        'E': E,
+        'delta_a': delta_a,
+        'alfa': alfa,
+        'bias': bias_value,
+        'hasiltes': hasiltes,
+        'hasilkelas': hasilkelas
+    }
+    
+    return jsonify(response)
+
+@app.route('/perhitungan')
+def calculation_route():
+    # Load preprocessed data from CSV
+    processed_df = pd.read_csv("Text_Preprocessing.csv")
+    
+    # Extract the list of preprocessed tokens
+    hasil_preprocessing = processed_df[['tweet_tokens_stemmed']].values.tolist()
+    # hasil_preprocessing = processed_df[['rawContent']].values.tolist()
+    
+    # Create an instance of the Preprocessor class
+    preprocessor = Preprocessor()
+    
+    # Calculate features, tf, wtf, df, idf, tfidf, lexicon weights, and sentiment scores
+    fitur = preprocessor.fitur_kata(hasil_preprocessing)
+    tf = preprocessor.tf(hasil_preprocessing, fitur)
+    wtf = preprocessor.wtf(tf)
+    df, idf = preprocessor.dfidf(tf)
+    tfidf = preprocessor.tfidf(wtf, idf)
+    
+    # Prepare response in JSON format
+    response_data = {
+        "fitur_kata": fitur,
+        "tf": tf,
+        "wtf": wtf,
+        "df": df,
+        "idf": idf,
+        "tfidf": tfidf
+    }
+    
+
+    
+    return jsonify(response_data)
+
+     # Save the processed data to a new CSV file
+    # df_fitur = pd.DataFrame(fitur, columns=['fitur_kata'])
+    # df_tf = pd.DataFrame(tf).transpose()
+    # df_wtf = pd.DataFrame(wtf).transpose()
+    # df_tfidf = pd.DataFrame(tfidf).transpose()
+    
+    # df_combined = pd.concat([df_fitur, df_tf, df_wtf, df_tfidf], axis=1)
+    # df_combined.columns = ['fitur_kata'] + [f'tf_{i}' for i in range(len(df_tf.columns))] + \
+    #                       [f'wtf_{i}' for i in range(len(df_wtf.columns))] + \
+    #                       [f'tfidf_{i}' for i in range(len(df_tfidf.columns))]
+    # df_combined.to_csv("Processed_Features.csv", index=False)
+
+@app.route('/testdatanew', methods=['POST'])
+def testdatanew():
+    data = request.json
+    data_testing = data['data_testing']
+
+    # Read and process the tfidf matrix
+    tfidf = pd.read_csv("hasil_vector_matrix.csv", header=None)
+    tfidf = tfidf.apply(pd.to_numeric, errors='coerce').fillna(0)
+
+    # Read and process the labels
+    kelas = pd.read_csv("pelabelan.csv", usecols=["label"]).apply(pd.to_numeric, errors='coerce').fillna(0)
+    
+    # Degree, max iterations, and learning rate
+    d = data['d']
+    itermax = data['itermax']
+    lr = data['lr']
+    
+    # Initialize the preprocessor and preprocess the testing data
+    preprocessor = Preprocessor()
+    fitur = preprocessor.fitur_kata([data_testing])
+    
+    # Debugging step: Check fitur
+    print("Fitur: ", fitur)
+    
+    tf_matrix = preprocessor.tf([data_testing], fitur)
+    
+    # Debugging step: Check tf_matrix
+    print("TF Matrix: ", tf_matrix)
+    
+    wtf_matrix = preprocessor.wtf(tf_matrix)
+    
+    # Debugging step: Check wtf_matrix
+    print("WTF Matrix: ", wtf_matrix)
+    
+    df, idf = preprocessor.dfidf(tf_matrix)
+    
+    # Debugging step: Check df and idf
+    print("DF: ", df)
+    print("IDF: ", idf)
+    
+    tfidf_testing = preprocessor.tfidf(wtf_matrix, idf)
+    
+    # Debugging step: Check tfidf_testing
+    print("TFIDF Testing: ", tfidf_testing)
+    
+    transposed_tfidf = preprocessor.transpose(tfidf_testing)
+
+    # Debugging shapes
+    print("Shape of tfidf: ", tfidf.shape)
+    print("Shape of tfidf_testing: ", len(tfidf_testing), len(tfidf_testing[0]) if len(tfidf_testing) > 0 else 0)
+    print("Shape of transposed_tfidf: ", len(transposed_tfidf), len(transposed_tfidf[0]) if len(transposed_tfidf) > 0 else 0)
+    
+    # Ensure shapes are compatible for kernel calculation
+    if tfidf.shape[1] != len(transposed_tfidf):
+        raise ValueError("Incompatible shapes for tfidf and transposed_tfidf")
+
+    # Reshape tfidf_testing to match the number of columns in tfidf
+    tfidf_testing_resized = tfidf_testing + [[0.0]] * (tfidf.shape[1] - len(tfidf_testing))
+    
+    # Transpose the resized tfidf_testing
+    transposed_tfidf_resized = preprocessor.transpose(tfidf_testing_resized)
+
+    # Debugging shapes after resizing
+    print("Shape of tfidf_testing_resized: ", len(tfidf_testing_resized), len(tfidf_testing_resized[0]) if len(tfidf_testing_resized) > 0 else 0)
+    print("Shape of transposed_tfidf_resized: ", len(transposed_tfidf_resized), len(transposed_tfidf_resized[0]) if len(transposed_tfidf_resized) > 0 else 0)
+
+    mat_kernel = preprocessor.kernel(tfidf.values.tolist(), transposed_tfidf_resized, d)
+    
+    hessian_matrix = preprocessor.hessian(kelas, mat_kernel)
+    E, delta_a, alfa = preprocessor.sequential(hessian_matrix, itermax, lr)
+    bias_value = preprocessor.bias(tfidf, alfa, kelas, d)
+    hasiltes, hasilkelas = preprocessor.datatesting(kelas, tfidf, transposed_tfidf_resized, d, alfa, bias_value)
+    
+    return jsonify({
+        'hasiltes': hasiltes,
+        'hasilkelas': hasilkelas
+    })
+    
+    # # Read and process the tfidf matrix
+    # tfidf = pd.read_csv("hasil_vector_matrix.csv", header=None)
+    # tfidf = tfidf.apply(pd.to_numeric, errors='coerce').fillna(0)
+    
 @app.route('/preprocessing')
 def preprocessing():
     logger.info("Starting preprocessing")
@@ -1674,6 +2353,8 @@ def tfidf_and_sentiment_labeling():
     try:
         # Baca file teks yang telah dipreprocessing
         TWEET_DATA = pd.read_csv("Text_Preprocessing.csv", usecols=["tweet_tokens_stemmed"])
+        # TWEET_DATA = pd.read_csv("Text_Preprocessing.csv", usecols=["rawContent"])
+        
         TWEET_DATA.columns = ["tweet"]
 
         logging.debug("Loaded TWEET_DATA: %s", TWEET_DATA.head())
