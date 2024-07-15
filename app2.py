@@ -56,103 +56,168 @@ def initialize_model():
     # Initialize with polynomial kernel
     return SVC(kernel='poly', degree=3, coef0=1, C=1, gamma='scale')
     
+import pickle
+from sklearn.feature_extraction.text import TfidfVectorizer
 
+# @app.route('/sequential_svm/train', methods=['POST'])
+# def train_sequential_svm():
+#     global model, scaler
+#     # Membaca dataset
+#     df = pd.read_csv("pelabelan.csv", header=0)
+#     # df = pd.read_csv("hasil_vector_matrix.csv", header=0)
+    
+#     # # Memisahkan fitur dan label
+#     # X = df.drop(columns=['Unnamed: 0', 'aktual', 'sentimen']).values
+#     # y = df['sentimen'].values
+    
+#     # X = df.drop(columns=['Unnamed: 0', 'aktual']).values
+#     # y = df['aktual'].values
+    
+#     X = df.drop(columns=['status','label']).values
+#     y = df['label'].values
+
+#     # Menstandarisasi fitur
+#     scaler = StandardScaler()
+#     X = scaler.fit_transform(X)
+
+#     # Menginisialisasi model
+#     model = initialize_model()
+
+#     # Melatih model
+#     model.fit(X, y)
+
+#     return "Pelatihan Sequential SVM berhasil"
 
 @app.route('/sequential_svm/train', methods=['POST'])
 def train_sequential_svm():
-    global model, scaler
+    global model, scaler, tfidf_vectorizer
+    
     # Membaca dataset
-    df = pd.read_csv("pelabelan.csv", header=0)
-    # df = pd.read_csv("hasil_vector_matrix.csv", header=0)
+    df = pd.read_csv("data_tweet.csv", header=0)
+    # df = pd.read_csv("pelabelan.csv", header=0)
     
-    # # Memisahkan fitur dan label
-    # X = df.drop(columns=['Unnamed: 0', 'aktual', 'sentimen']).values
-    # y = df['sentimen'].values
-    
-    # X = df.drop(columns=['Unnamed: 0', 'aktual']).values
-    # y = df['aktual'].values
-    
-    X = df.drop(columns=['status','label']).values
+    # X = df['status'].astype(str).values  # Pastikan kolom 'status' berisi teks
+    X = df['rawContent'].values  # Pastikan kolom 'status' berisi teks
     y = df['label'].values
 
+    # Mengubah teks menjadi format yang sesuai untuk model menggunakan TF-IDF
+    tfidf_vectorizer = TfidfVectorizer()
+    X_tfidf = tfidf_vectorizer.fit_transform(X)
+    
     # Menstandarisasi fitur
-    scaler = StandardScaler()
-    X = scaler.fit_transform(X)
+    scaler = StandardScaler(with_mean=False)
+    X_scaled = scaler.fit_transform(X_tfidf)
 
     # Menginisialisasi model
     model = initialize_model()
 
     # Melatih model
-    model.fit(X, y)
+    model.fit(X_scaled, y)
+    
+    # Menyimpan model, scaler, dan TF-IDF vectorizer
+    with open('model.pkl', 'wb') as model_file, open('scaler.pkl', 'wb') as scaler_file, open('tfidf_vectorizer.pkl', 'wb') as tfidf_file:
+        pickle.dump(model, model_file)
+        pickle.dump(scaler, scaler_file)
+        pickle.dump(tfidf_vectorizer, tfidf_file)
 
     return "Pelatihan Sequential SVM berhasil"
-
-
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics import classification_report, confusion_matrix
+
+# Inisialisasi logging
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S')
+
+# Muat model, scaler, dan TF-IDF vectorizer
+try:
+    with open('model.pkl', 'rb') as model_file, open('scaler.pkl', 'rb') as scaler_file, open('tfidf_vectorizer.pkl', 'rb') as tfidf_file:
+        model = pickle.load(model_file)
+        scaler = pickle.load(scaler_file)
+        tfidf_vectorizer = pickle.load(tfidf_file)
+except FileNotFoundError as e:
+    print(f"Error loading files: {e}")
+    model, scaler, tfidf_vectorizer = None, None, None
 
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    global model, scaler  # Pastikan scaler juga diakses secara global
+    global model, scaler, tfidf_vectorizer 
+    
+
+    # global model, scaler  # Pastikan scaler juga diakses secara global
     if model is None:
-        logging.error("Model belum dilatih.")
+        print("Model belum dilatih.")
         return "Model belum dilatih.", 400
 
     # Menerima data dari request
     data = request.get_json()
     if not data or 'text' not in data:
-        logging.error("Data tidak valid: Tidak ada teks dalam data.")
+        print("Data tidak valid: Tidak ada teks dalam data.")
         return "Data tidak valid", 400
 
     try:
         # Preprocessing teks input
         processed_text = preprocess_text(data['text'])
-        logging.debug(f"Teks diproses: {processed_text}")
+        print(f"Teks diproses: {processed_text}")
 
         # Mengubah teks menjadi format yang sesuai untuk model menggunakan TF-IDF
-        vectorized_text = tfidf_predict(processed_text)
-        logging.debug(f"Teks tervektorisasi: {vectorized_text}")
-
-        # Memastikan bahwa vektor fitur tidak melebihi 100 fitur
-        # if vectorized_text.shape[0] > 100:
-        #     vectorized_text = vectorized_text[:100]  # Memotong vektor jika lebih dari 100 fitur
-        #     logging.debug("Vektor fitur dipotong menjadi 100 fitur.")
+        # vectorized_text = tfidf_predict(processed_text)
+        # print(f"Teks tervektorisasi: {vectorized_text}")
+   
+        vectorized_text = tfidf_vectorizer.transform([processed_text])
+        vectorized_text = vectorized_text.toarray()  # Konversi sparse matrix ke dense array
+        print(f"Teks tervektorisasi: {vectorized_text}")
         
-        if len(vectorized_text) < scaler.mean_.shape[0]:
-            vectorized_text = np.pad(vectorized_text, (0, scaler.mean_.shape[0] - len(vectorized_text)), 'constant')
-            logging.debug(f"Vektor fitur dipanjangkan menjadi {len(vectorized_text)} fitur.")
+        # vectorized_text = tfidf_vectorizer.transform([processed_text])
+        # print(f"Teks tervektorisasi: {vectorized_text.toarray()}")
         
-        elif len(vectorized_text) > scaler.mean_.shape[0]:
-            vectorized_text = vectorized_text[:scaler.mean_.shape[0]]
-            logging.debug(f"Vektor fitur dipotong menjadi {len(vectorized_text)} fitur.")
+        # if len(vectorized_text) < scaler.mean_.shape[0]:
+        #     vectorized_text = np.pad(vectorized_text, (0, scaler.mean_.shape[0] - len(vectorized_text)), 'constant')
+        #     print(f"Vektor fitur dipanjangkan menjadi {len(vectorized_text)} fitur.")
+        
+        # elif len(vectorized_text) > scaler.mean_.shape[0]:
+        #     vectorized_text = vectorized_text[:scaler.mean_.shape[0]]
+        #     print(f"Vektor fitur dipotong menjadi {len(vectorized_text)} fitur.")
 
         # Standarisasi fitur sebelum prediksi
-        vectorized_text = scaler.transform([vectorized_text])  # Pastikan menggunakan transform bukan fit_transform
-        logging.debug("Teks terstandarisasi {vectorized_text} .")
+        # vectorized_text = scaler.transform([vectorized_text])  # Pastikan menggunakan transform bukan fit_transform
+        # print(f"Teks terstandarisasi: {vectorized_text}.")
+
+        vectorized_text = scaler.transform(vectorized_text)
+        print(f"Teks terstandarisasi: {vectorized_text}")
 
         # Melakukan prediksi menggunakan model yang sudah dilatih
         prediction = model.predict(vectorized_text)
-        logging.debug(f"Prediksi: {prediction}")
+        print(f"Prediksi: {prediction}")
 
         # Menghitung kernel dari data uji
-        kernel_matrix = model.decision_function(vectorized_text)
-        logging.debug(f"Matriks kernel data uji: {kernel_matrix}")
+        # kernel_matrix = model.decision_function(vectorized_text)
+        # print(f"Matriks kernel data uji: {kernel_matrix}")
+        kernel_matrix = model.decision_function(vectorized_text).tolist()  # Konversi ke list
+        print(f"Matriks kernel data uji: {kernel_matrix}")
 
         # Mendapatkan nilai alpha (ai) dan support vectors (yi)
-        dual_coef = model.dual_coef_
-        support_vectors = model.support_vectors_
-        logging.debug(f"Nilai alpha (ai): {dual_coef}")
-        logging.debug(f"Support vectors (yi): {support_vectors}")
+        # dual_coef = model.dual_coef_
+        # support_vectors = model.support_vectors_
+        # print(f"Nilai alpha (ai): {dual_coef}")
+        # print(f"Support vectors (yi): {support_vectors}")
+        
+        dual_coef = model.dual_coef_.tolist()  # Konversi ke list
+        support_vectors = model.support_vectors_.toarray().tolist()  # Konversi ke dense array dan kemudian ke list
+        print(f"Nilai alpha (ai): {dual_coef}")
+        print(f"Support vectors (yi): {support_vectors}")
 
         # Mengonversi prediksi numerik ke label sentimen
         sentiment = 'Negatif' if kernel_matrix[0] < 0 else 'Positif'
-        logging.info(f"Sentimen yang diprediksi: {sentiment}")
-
-        return jsonify({"sentimen": sentiment, "kernel_matrix": kernel_matrix.tolist(), "alpha_values": dual_coef.tolist(), "support_vectors": support_vectors.tolist()})
+        print(f"Sentimen yang diprediksi: {sentiment}")
+        
+        return jsonify({"sentimen": prediction, "kernel_matrix": kernel_matrix, "alpha_values": dual_coef, "support_vectors": support_vectors})
+        # return jsonify({"sentimen": prediction, "kernel_matrix": kernel_matrix.tolist(), "alpha_values": dual_coef.tolist(), "support_vectors": support_vectors.tolist()})
     except Exception as e:
-        logging.error(f"Kesalahan dalam pemrosesan prediksi: {str(e)}")
+        print(f"Kesalahan dalam pemrosesan prediksi: {str(e)}")
         if isinstance(e, TypeError) and "float() argument" in str(e):
-            logging.error("Tipe data yang diberikan tidak sesuai, pastikan data yang diberikan adalah numerik.")
+            print("Tipe data yang diberikan tidak sesuai, pastikan data yang diberikan adalah numerik.")
             return jsonify({"error": "Kesalahan dalam pemrosesan prediksi", "message": "Tipe data yang diberikan tidak sesuai, pastikan data yang diberikan adalah numerik."}), 500
         return jsonify({"error": "Kesalahan dalam pemrosesan prediksi", "message": str(e)}), 500
 
@@ -201,18 +266,15 @@ def preprocess_text(text):
     # Menggabungkan token kembali menjadi string
     return ' '.join(stemmed_tokens)
 
-# # Contoh penggunaan fungsi
-# text_input = "Ini adalah contoh teks untuk testing preprocessing!"
-# processed_text = preprocess_text(text_input)
-# print(processed_text)
-
 def tfidf_predict(processed_text):
     # Konversi teks yang diproses menjadi list token
     input_tokens = word_tokenize(processed_text)
+    print(f"Input tokens: {input_tokens}")
 
     # Load data untuk mendapatkan DF dan IDF yang sudah ada
     TWEET_DATA = pd.read_csv("Text_Preprocessing.csv", usecols=["tweet_tokens_stemmed"])
     TWEET_DATA["tweet_list"] = TWEET_DATA["tweet_tokens_stemmed"].apply(ast.literal_eval)
+    print(f"Loaded tweet data: {TWEET_DATA.head()}")
 
     # Menghitung DF dari data yang ada
     def calc_DF(tfDict):
@@ -222,10 +284,12 @@ def tfidf_predict(processed_text):
         return count_DF
 
     DF = calc_DF(TWEET_DATA["tweet_list"].apply(Counter))
+    print(f"Document Frequency (DF): {DF}")
 
     n_document = len(TWEET_DATA) + 1  # Termasuk dokumen input
-    max_proses = 100  # Batas maksimum proses
+    max_proses = 1000  # Batas maksimum proses
     n_document = min(n_document, max_proses)  # Batasi jumlah dokumen yang diproses
+    print(f"Number of documents: {n_document}")
 
     # Menghitung IDF
     def calc_IDF(__n_document, __DF):
@@ -235,11 +299,13 @@ def tfidf_predict(processed_text):
         return IDF_Dict
 
     IDF = calc_IDF(n_document, DF)
+    print(f"Inverse Document Frequency (IDF): {IDF}")
 
     # Menghitung TF untuk input
     TF_dict = Counter(input_tokens)
     for term in TF_dict:
         TF_dict[term] = TF_dict[term] / len(input_tokens)
+    print(f"Term Frequency (TF) for input: {TF_dict}")
 
     # Menghitung TF-IDF untuk input
     def calc_TF_IDF(TF, IDF):
@@ -249,10 +315,14 @@ def tfidf_predict(processed_text):
         return TF_IDF_Dict
 
     TF_IDF_dict = calc_TF_IDF(TF_dict, IDF)
+    print(f"TF-IDF dictionary for input: {TF_IDF_dict}")
 
     # Mengonversi TF-IDF dict ke vektor berdasarkan urutan DF
     TF_IDF_vector = np.array([TF_IDF_dict.get(term, 0) for term in sorted(DF.keys())])
+    print(f"TF-IDF vector: {TF_IDF_vector}")
+
     return TF_IDF_vector
+
 
 @app.route('/sequential_svm/predict', methods=['GET'])
 @cross_origin()
@@ -293,7 +363,6 @@ def evaluate_sequential_svm():
     # Split data into training and test sets
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.5, random_state=42)
 
-    # Train and predict
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
 
@@ -1135,7 +1204,6 @@ class Preprocessor:
     #                 temp.append(0)
     #         tfidf.append(temp)
     #     return tfidf
-
     def transpose(self, tfidf):
         transpose = []
         for i in range(len(tfidf[0])):
@@ -1148,9 +1216,10 @@ class Preprocessor:
     def kernel(self, mat, trans, d):
         c = 1
         mat_kernel = []
+        print(f"Shape of trans: {len(trans)}x{len(trans[0])} | Shape of mat: {len(mat)}x{len(mat[0])}")
         for i in range(len(trans)):
             temp = []
-            for j in range(len(mat)):
+            for j in range(len(mat[0])):  # Adjust the iteration to match mat's columns
                 total = 0
                 for x in range(len(trans[0])):
                     try:
@@ -1166,7 +1235,7 @@ class Preprocessor:
             mat_kernel.append(temp)
         return mat_kernel
     
-    # def kernel(trans, mat, d):
+    # def kernel(self, trans, mat, d):
     #     # Print ukuran matriks untuk debugging
     #     print(f"Ukuran trans: {len(trans)}x{len(trans[0])} (if not empty)")
     #     print(f"Ukuran mat: {len(mat)}x{len(mat[0])} (if not empty)")
@@ -1335,54 +1404,121 @@ class Preprocessor:
         
     #     return bias_value
 
+    # def bias(self, matrix, sv, kelas, d):
+    #     c = 1
+    #     xpos = xneg = None
+        
+    #     # Find maximum sv for class 1
+    #     for i in range(len(kelas)):
+    #         if kelas[i] == 1:
+    #             if xpos is None or sv[i] > sv[xpos]:
+    #                 xpos = i
+        
+    #     # Find maximum sv for class -1
+    #     for i in range(len(kelas)):
+    #         if kelas[i] == -1:
+    #             if xneg is None or sv[i] > sv[xneg]:
+    #                 xneg = i
+        
+    #     if xpos is None or xneg is None:
+    #         raise ValueError("No suitable support vectors found for classes 1 or -1. Please check your SVM model input.")
+        
+    #     alpos = xpos
+    #     alneg = xneg
+        
+    #     sigmapos = sigmaneg = 0
+        
+    #     for i in range(len(kelas)):
+    #         totpos = totneg = 0
+            
+    #         if alpos < len(matrix):
+    #             for j in range(len(matrix[i])):
+    #                 totpos += matrix[i][j] * matrix[alpos][j]
+            
+    #         if alneg < len(matrix):
+    #             for j in range(len(matrix[i])):
+    #                 totneg += matrix[i][j] * matrix[alneg][j]
+            
+    #         kernelpos = math.pow((totpos + c), d)
+    #         kernelneg = math.pow((totneg + c), d)
+            
+    #         h_pos = sv[i] * kelas[i] * kernelpos
+    #         h_neg = sv[i] * kelas[i] * kernelneg
+            
+    #         sigmapos += h_pos
+    #         sigmaneg += h_neg
+        
+    #     bias_value = -0.5 * (sigmapos + sigmaneg)
+        
+    #     return bias_value
+
     def bias(self, matrix, sv, kelas, d):
         c = 1
         xpos = xneg = None
-        
+
+        # Debugging information
+        print(f"Length of matrix: {len(matrix)}")
+        print(f"Length of kelas: {len(kelas)}")
+
+        # Check if the lengths of matrix and kelas match
+        if len(matrix) != len(kelas):
+            raise ValueError(f"Length of matrix ({len(matrix)}) does not match length of kelas ({len(kelas)})")
+
         # Find maximum sv for class 1
-        for i in range(len(kelas)):
+        for i in range(len(matrix)):
             if kelas[i] == 1:
                 if xpos is None or sv[i] > sv[xpos]:
                     xpos = i
-        
+
         # Find maximum sv for class -1
-        for i in range(len(kelas)):
+        for i in range(len(matrix)):
             if kelas[i] == -1:
                 if xneg is None or sv[i] > sv[xneg]:
                     xneg = i
-        
+
         if xpos is None or xneg is None:
             raise ValueError("No suitable support vectors found for classes 1 or -1. Please check your SVM model input.")
-        
+
         alpos = xpos
         alneg = xneg
-        
+
         sigmapos = sigmaneg = 0
-        
-        for i in range(len(kelas)):
+
+        for i in range(len(matrix)):
             totpos = totneg = 0
+
+            # Debugging information
+            print(f"Processing row {i}, alpos: {alpos}, alneg: {alneg}")
+            if alpos >= len(matrix) or alneg >= len(matrix):
+                print(f"Index out of range: alpos={alpos}, alneg={alneg}, len(matrix)={len(matrix)}")
+                raise IndexError("alpos or alneg index out of range.")
+
+            if i >= len(matrix):
+                print(f"Index out of range: i={i}, len(matrix)={len(matrix)}")
+                raise IndexError("i index out of range.")
             
+            print(f"Row {i} length: {len(matrix[i])}")
+
             if alpos < len(matrix):
                 for j in range(len(matrix[i])):
                     totpos += matrix[i][j] * matrix[alpos][j]
-            
+
             if alneg < len(matrix):
                 for j in range(len(matrix[i])):
                     totneg += matrix[i][j] * matrix[alneg][j]
-            
+
             kernelpos = math.pow((totpos + c), d)
             kernelneg = math.pow((totneg + c), d)
-            
+
             h_pos = sv[i] * kelas[i] * kernelpos
             h_neg = sv[i] * kelas[i] * kernelneg
-            
+
             sigmapos += h_pos
             sigmaneg += h_neg
-        
-        bias_value = -0.5 * (sigmapos + sigmaneg)
-        
-        return bias_value
 
+        bias_value = -0.5 * (sigmapos + sigmaneg)
+
+        return bias_value
 
 
     # def datatesting(self, kelas, matrix, trans, d, alfa, bias):
@@ -1469,60 +1605,47 @@ def preprocessingbaru():
 def combined_route():
     data = request.json
     data_testing = data.get('rawContent')
-    # data_testing = data.get('data_testing')rawContent
     d = data.get('d')
     itermax = data.get('itermax')
     lr = data.get('lr')
 
     print(data_testing)
+
     # Load preprocessed data from CSV
     processed_df = pd.read_csv("Text_Preprocessing.csv")
-    
-    # Extract the list of preprocessed tokens
-    hasil_preprocessing = processed_df[['tweet_tokens_stemmed']].values.tolist()
+    hasil_preprocessing = processed_df[['rawContent']].values.tolist()
     
     # Create an instance of the Preprocessor class
     preprocessor = Preprocessor()
     
-    # Calculate features, tf, wtf, df, idf, tfidf
+    # Calculate features and various metrics
     fitur = preprocessor.fitur_kata(hasil_preprocessing)
     tf = preprocessor.tf(hasil_preprocessing, fitur)
     wtf = preprocessor.wtf(tf)
     idf = preprocessor.dfidf(tf)
     tfidf = preprocessor.tfidf(wtf, idf)
     
-    # # Load training data from CSV
+    # Load training data from CSV
     training_data_df = pd.read_csv("data_tweet.csv")
-    
-    # # Extract training class
     kelas = training_data_df['kelas'].tolist()
-    # Convert 'Negatif' and 'Positif' to numeric values
     kelas = [1 if k == 'Positif' else -1 for k in kelas]
 
     # Transpose TF-IDF matrix
     transposed_tfidf = preprocessor.transpose(tfidf)
     
-   # Calculate kernel, hessian, sequential
-   # Calculate kernel using the updated method
+    # Calculate kernel, hessian, sequential
     kernel_matrix = preprocessor.kernel(tfidf, transposed_tfidf, d)
-    # kernel_matrix = preprocessor.kernel(transposed_tfidf, tfidf, d)
     hessian_matrix = preprocessor.hessian(kelas, kernel_matrix)
     E, delta_a, alfa = preprocessor.sequential(hessian_matrix, itermax, lr)
     
     # Calculate bias
     bias_value = preprocessor.bias(tfidf, alfa, kelas, d)
-    
 
-    # test_data = "Banyak sekali pemain yg saling ejek dalam sesama team match, mereka tidak mengerti permasalahan pada pemain satu tim, kebanyakan yg jaringan lag,ketika kita mau melakukan ultimate skill tiba2 skill gak keluar dan akhirnya kita mati, seperti nya sdah sangat di atur sekali oleh sistem,hp apapun, berapa pun RAM dan ROM nya,dan melalui jaring"
-    # test_df = pd.DataFrame(data_testing)
-    
-    # test_hasil_preprocessing = preprocessed_test_df.values.tolist()
-    # Ubah hasil preprocessing menjadi DataFrame jika diperlukan
-    # test_df = pd.DataFrame({'rawContent': [preprocessed_test_df]})
-
+    # Preprocess test data
     preprocessed_test_df = preprocessor.preprocess2(data_testing)
     print(preprocessed_test_df)
-    # Calculate features, tf, wtf, df, idf, tfidf for test data
+    
+    # Calculate features and various metrics for test data
     test_fitur = preprocessor.fitur_kata(preprocessed_test_df)
     test_tf = preprocessor.tf(preprocessed_test_df, test_fitur)
     test_wtf = preprocessor.wtf(test_tf)
@@ -1552,8 +1675,8 @@ def calculation_route():
     processed_df = pd.read_csv("Text_Preprocessing.csv")
     
     # Extract the list of preprocessed tokens
-    hasil_preprocessing = processed_df[['tweet_tokens_stemmed']].values.tolist()
-    # hasil_preprocessing = processed_df[['rawContent']].values.tolist()
+    # hasil_preprocessing = processed_df[['tweet_tokens_stemmed']].values.tolist()
+    hasil_preprocessing = processed_df[['rawContent']].values.tolist()
     
     # Create an instance of the Preprocessor class
     preprocessor = Preprocessor()
@@ -1562,7 +1685,7 @@ def calculation_route():
     fitur = preprocessor.fitur_kata(hasil_preprocessing)
     tf = preprocessor.tf(hasil_preprocessing, fitur)
     wtf = preprocessor.wtf(tf)
-    df, idf = preprocessor.dfidf(tf)
+    idf = preprocessor.dfidf(tf)
     tfidf = preprocessor.tfidf(wtf, idf)
     
     # Prepare response in JSON format
@@ -1570,12 +1693,10 @@ def calculation_route():
         "fitur_kata": fitur,
         "tf": tf,
         "wtf": wtf,
-        "df": df,
+        # "df": df,
         "idf": idf,
         "tfidf": tfidf
     }
-    
-
     
     return jsonify(response_data)
 
@@ -1595,13 +1716,30 @@ def calculation_route():
 def testdatanew():
     data = request.json
     data_testing = data['data_testing']
+    
+    processed_df = pd.read_csv("Text_Preprocessing.csv")
+    
+    # Extract the list of preprocessed tokens
+    hasil_preprocessing = processed_df[['rawContent']].values.tolist()
+    # hasil_preprocessing = processed_df[['tweet_tokens_stemmed']].values.tolist()
+    
+    # Create an instance of the Preprocessor class
+    preprocessor = Preprocessor()
+    
+    # Calculate features, tf, wtf, df, idf, tfidf
+    fitur = preprocessor.fitur_kata(hasil_preprocessing)
+    tf = preprocessor.tf(hasil_preprocessing, fitur)
+    wtf = preprocessor.wtf(tf)
+    idf = preprocessor.dfidf(tf)
+    tfidf = preprocessor.tfidf(wtf, idf)
 
-    # Read and process the tfidf matrix
-    tfidf = pd.read_csv("hasil_vector_matrix.csv", header=None)
-    tfidf = tfidf.apply(pd.to_numeric, errors='coerce').fillna(0)
-
-    # Read and process the labels
-    kelas = pd.read_csv("pelabelan.csv", usecols=["label"]).apply(pd.to_numeric, errors='coerce').fillna(0)
+     # # Load training data from CSV
+    training_data_df = pd.read_csv("data_tweet.csv")
+    
+    # # Extract training class
+    kelas = training_data_df['kelas'].tolist()
+    # Convert 'Negatif' and 'Positif' to numeric values
+    kelas = [1 if k == 'Positif' else -1 for k in kelas]
     
     # Degree, max iterations, and learning rate
     d = data['d']
@@ -1625,10 +1763,10 @@ def testdatanew():
     # Debugging step: Check wtf_matrix
     print("WTF Matrix: ", wtf_matrix)
     
-    df, idf = preprocessor.dfidf(tf_matrix)
+    idf = preprocessor.dfidf(tf_matrix)
     
     # Debugging step: Check df and idf
-    print("DF: ", df)
+    # print("DF: ", df)
     print("IDF: ", idf)
     
     tfidf_testing = preprocessor.tfidf(wtf_matrix, idf)
@@ -2464,7 +2602,8 @@ def tfidf_and_sentiment_labeling():
 
         # max_features = request.args.get('max_features', default=100, type=int)
         # Inisialisasi CountVectorizer dan hitung vektor TF
-        max_features = 50
+        # max_features = 50
+        max_features = 100
         cvect = CountVectorizer(max_features=max_features)
         TF_vector = cvect.fit_transform(TWEET_DATA["tweet_join"])
         normalized_TF_vector = normalize(TF_vector, norm='l1', axis=1)
