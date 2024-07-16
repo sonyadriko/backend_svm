@@ -140,86 +140,135 @@ except FileNotFoundError as e:
     model, scaler, tfidf_vectorizer = None, None, None
 
 
-@app.route('/predict', methods=['POST'])
-def predict():
-    global model, scaler, tfidf_vectorizer 
+# @app.route('/predict', methods=['POST'])
+# def predict():
+#     global model, scaler, tfidf_vectorizer 
     
 
-    # global model, scaler  # Pastikan scaler juga diakses secara global
+#     # global model, scaler  # Pastikan scaler juga diakses secara global
+#     if model is None:
+#         print("Model belum dilatih.")
+#         return "Model belum dilatih.", 400
+
+#     # Menerima data dari request
+#     data = request.get_json()
+#     if not data or 'text' not in data:
+#         print("Data tidak valid: Tidak ada teks dalam data.")
+#         return "Data tidak valid", 400
+
+#     try:
+#         # Preprocessing teks input
+#         processed_text = preprocess_text(data['text'])
+#         print(f"Teks diproses: {processed_text}")
+
+#         # Mengubah teks menjadi format yang sesuai untuk model menggunakan TF-IDF
+#         # vectorized_text = tfidf_predict(processed_text)
+#         # print(f"Teks tervektorisasi: {vectorized_text}")
+   
+#         vectorized_text = tfidf_vectorizer.transform([processed_text])
+#         vectorized_text = vectorized_text.toarray()  # Konversi sparse matrix ke dense array
+#         print(f"Teks tervektorisasi: {vectorized_text}")
+        
+#         # vectorized_text = tfidf_vectorizer.transform([processed_text])
+#         # print(f"Teks tervektorisasi: {vectorized_text.toarray()}")
+        
+#         # if len(vectorized_text) < scaler.mean_.shape[0]:
+#         #     vectorized_text = np.pad(vectorized_text, (0, scaler.mean_.shape[0] - len(vectorized_text)), 'constant')
+#         #     print(f"Vektor fitur dipanjangkan menjadi {len(vectorized_text)} fitur.")
+        
+#         # elif len(vectorized_text) > scaler.mean_.shape[0]:
+#         #     vectorized_text = vectorized_text[:scaler.mean_.shape[0]]
+#         #     print(f"Vektor fitur dipotong menjadi {len(vectorized_text)} fitur.")
+
+#         # Standarisasi fitur sebelum prediksi
+#         # vectorized_text = scaler.transform([vectorized_text])  # Pastikan menggunakan transform bukan fit_transform
+#         # print(f"Teks terstandarisasi: {vectorized_text}.")
+
+#         vectorized_text = scaler.transform(vectorized_text)
+#         print(f"Teks terstandarisasi: {vectorized_text}")
+
+#         # Melakukan prediksi menggunakan model yang sudah dilatih
+#         prediction = model.predict(vectorized_text)
+#         print(f"Prediksi: {prediction}")
+
+#         # Menghitung kernel dari data uji
+#         # kernel_matrix = model.decision_function(vectorized_text)
+#         # print(f"Matriks kernel data uji: {kernel_matrix}")
+#         kernel_matrix = model.decision_function(vectorized_text).tolist()  # Konversi ke list
+#         print(f"Matriks kernel data uji: {kernel_matrix}")
+
+#         # Mendapatkan nilai alpha (ai) dan support vectors (yi)
+#         # dual_coef = model.dual_coef_
+#         # support_vectors = model.support_vectors_
+#         # print(f"Nilai alpha (ai): {dual_coef}")
+#         # print(f"Support vectors (yi): {support_vectors}")
+        
+#         dual_coef = model.dual_coef_.tolist()  # Konversi ke list
+#         support_vectors = model.support_vectors_.toarray().tolist()  # Konversi ke dense array dan kemudian ke list
+#         print(f"Nilai alpha (ai): {dual_coef}")
+#         print(f"Support vectors (yi): {support_vectors}")
+
+#         # Mengonversi prediksi numerik ke label sentimen
+#         sentiment = 'Negatif' if kernel_matrix[0] < 0 else 'Positif'
+#         print(f"Sentimen yang diprediksi: {sentiment}")
+        
+#         return jsonify({"sentimen": prediction, "kernel_matrix": kernel_matrix, "alpha_values": dual_coef, "support_vectors": support_vectors})
+#         # return jsonify({"sentimen": prediction, "kernel_matrix": kernel_matrix.tolist(), "alpha_values": dual_coef.tolist(), "support_vectors": support_vectors.tolist()})
+#     except Exception as e:
+#         print(f"Kesalahan dalam pemrosesan prediksi: {str(e)}")
+#         if isinstance(e, TypeError) and "float() argument" in str(e):
+#             print("Tipe data yang diberikan tidak sesuai, pastikan data yang diberikan adalah numerik.")
+#             return jsonify({"error": "Kesalahan dalam pemrosesan prediksi", "message": "Tipe data yang diberikan tidak sesuai, pastikan data yang diberikan adalah numerik."}), 500
+#         return jsonify({"error": "Kesalahan dalam pemrosesan prediksi", "message": str(e)}), 500
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    global model, scaler, tfidf_vectorizer
+
     if model is None:
         print("Model belum dilatih.")
         return "Model belum dilatih.", 400
 
-    # Menerima data dari request
     data = request.get_json()
     if not data or 'text' not in data:
         print("Data tidak valid: Tidak ada teks dalam data.")
         return "Data tidak valid", 400
 
     try:
-        # Preprocessing teks input
         processed_text = preprocess_text(data['text'])
         print(f"Teks diproses: {processed_text}")
 
-        # Mengubah teks menjadi format yang sesuai untuk model menggunakan TF-IDF
-        # vectorized_text = tfidf_predict(processed_text)
-        # print(f"Teks tervektorisasi: {vectorized_text}")
-   
         vectorized_text = tfidf_vectorizer.transform([processed_text])
-        vectorized_text = vectorized_text.toarray()  # Konversi sparse matrix ke dense array
+        vectorized_text = vectorized_text.toarray()
         print(f"Teks tervektorisasi: {vectorized_text}")
-        
-        # vectorized_text = tfidf_vectorizer.transform([processed_text])
-        # print(f"Teks tervektorisasi: {vectorized_text.toarray()}")
-        
-        # if len(vectorized_text) < scaler.mean_.shape[0]:
-        #     vectorized_text = np.pad(vectorized_text, (0, scaler.mean_.shape[0] - len(vectorized_text)), 'constant')
-        #     print(f"Vektor fitur dipanjangkan menjadi {len(vectorized_text)} fitur.")
-        
-        # elif len(vectorized_text) > scaler.mean_.shape[0]:
-        #     vectorized_text = vectorized_text[:scaler.mean_.shape[0]]
-        #     print(f"Vektor fitur dipotong menjadi {len(vectorized_text)} fitur.")
-
-        # Standarisasi fitur sebelum prediksi
-        # vectorized_text = scaler.transform([vectorized_text])  # Pastikan menggunakan transform bukan fit_transform
-        # print(f"Teks terstandarisasi: {vectorized_text}.")
 
         vectorized_text = scaler.transform(vectorized_text)
         print(f"Teks terstandarisasi: {vectorized_text}")
 
-        # Melakukan prediksi menggunakan model yang sudah dilatih
         prediction = model.predict(vectorized_text)
+        prediction = prediction.tolist()
         print(f"Prediksi: {prediction}")
 
-        # Menghitung kernel dari data uji
-        # kernel_matrix = model.decision_function(vectorized_text)
-        # print(f"Matriks kernel data uji: {kernel_matrix}")
-        kernel_matrix = model.decision_function(vectorized_text).tolist()  # Konversi ke list
+        kernel_matrix = model.decision_function(vectorized_text).tolist()
         print(f"Matriks kernel data uji: {kernel_matrix}")
 
-        # Mendapatkan nilai alpha (ai) dan support vectors (yi)
-        # dual_coef = model.dual_coef_
-        # support_vectors = model.support_vectors_
-        # print(f"Nilai alpha (ai): {dual_coef}")
-        # print(f"Support vectors (yi): {support_vectors}")
-        
-        dual_coef = model.dual_coef_.tolist()  # Konversi ke list
-        support_vectors = model.support_vectors_.toarray().tolist()  # Konversi ke dense array dan kemudian ke list
-        print(f"Nilai alpha (ai): {dual_coef}")
-        print(f"Support vectors (yi): {support_vectors}")
-
-        # Mengonversi prediksi numerik ke label sentimen
-        sentiment = 'Negatif' if kernel_matrix[0] < 0 else 'Positif'
-        print(f"Sentimen yang diprediksi: {sentiment}")
-        
-        return jsonify({"sentimen": prediction, "kernel_matrix": kernel_matrix, "alpha_values": dual_coef, "support_vectors": support_vectors})
-        # return jsonify({"sentimen": prediction, "kernel_matrix": kernel_matrix.tolist(), "alpha_values": dual_coef.tolist(), "support_vectors": support_vectors.tolist()})
+      
+        return jsonify({
+            "sentimen": prediction,
+            "kernel_matrix": kernel_matrix
+        })
     except Exception as e:
         print(f"Kesalahan dalam pemrosesan prediksi: {str(e)}")
         if isinstance(e, TypeError) and "float() argument" in str(e):
             print("Tipe data yang diberikan tidak sesuai, pastikan data yang diberikan adalah numerik.")
-            return jsonify({"error": "Kesalahan dalam pemrosesan prediksi", "message": "Tipe data yang diberikan tidak sesuai, pastikan data yang diberikan adalah numerik."}), 500
-        return jsonify({"error": "Kesalahan dalam pemrosesan prediksi", "message": str(e)}), 500
+            return jsonify({
+                "error": "Kesalahan dalam pemrosesan prediksi",
+                "message": "Tipe data yang diberikan tidak sesuai, pastikan data yang diberikan adalah numerik."
+            }), 500
+        return jsonify({
+            "error": "Kesalahan dalam pemrosesan prediksi",
+            "message": str(e)
+        }), 500
 
 
 def preprocess_text(text):
@@ -668,18 +717,23 @@ def countDataTraining():
 @app.route('/data-training')
 def dataTraining():
     TWEET_DATA = pd.read_csv("data_tweet.csv", usecols=['rawContent', 'status'])
+    TWEET_DATA['status'] = TWEET_DATA['status'].astype(int)  
     data = TWEET_DATA.to_dict(orient='records')
 
-    positif_count = 0
     negatif_count = 0
+    positif_count = 0
+    unlabel_count = 0
 
     for entry in data:
         if entry['status'] in [1, 2]:
             entry['status'] = 'Negatif'
             negatif_count += 1
-        else:
+        elif entry['status'] in [4, 5]:
             entry['status'] = 'Positif'
             positif_count += 1
+        else:
+            entry['status'] = 'Unlabel'
+            unlabel_count += 1
 
     response = {
         'data': data,
