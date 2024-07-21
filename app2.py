@@ -255,7 +255,8 @@ def predict():
       
         return jsonify({
             "sentimen": prediction,
-            "kernel_matrix": kernel_matrix
+            "kernel_matrix": kernel_matrix,
+            "preprocess_text": processed_text
         })
     except Exception as e:
         print(f"Kesalahan dalam pemrosesan prediksi: {str(e)}")
@@ -717,7 +718,7 @@ def countDataTraining():
 @app.route('/data-training')
 def dataTraining():
     TWEET_DATA = pd.read_csv("data_tweet.csv", usecols=['rawContent', 'status'])
-    TWEET_DATA['status'] = TWEET_DATA['status'].astype(int)  
+    # TWEET_DATA['status'] = TWEET_DATA['status'].astype(int)  
     data = TWEET_DATA.to_dict(orient='records')
 
     negatif_count = 0
