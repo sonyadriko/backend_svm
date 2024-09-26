@@ -575,6 +575,9 @@ def evaluate_sequential_svm():
 def SVM():
     try:
         df = pd.read_csv("pelabelan.csv", header=0)
+        
+        total_data = df.shape[0]
+        print(f"Total Data: {total_data}")
 
         label_encoder = LabelEncoder()
         df['label'] = label_encoder.fit_transform(df['label'])
@@ -649,11 +652,13 @@ def SVM():
         app.logger.info(f"TN: {tn}, FP: {fp}, FN: {fn}, TP: {tp}")
         app.logger.info(f"Classification Report: {classification_rep}")
         app.logger.info(f"Precision: {precision}, Recall: {recall}, F1 Score: {f1}")
+        
+        total_data_y = total_data * test_size
 
         return jsonify(accuracy=accuracy, confusion_matrix=cm.tolist(),
                     tn=tn, fp=fp, fn=fn, tp=tp,
                     classification_report=classification_rep,
-                    precision=precision, f1_score=f1, recall=recall)
+                    precision=precision, f1_score=f1, recall=recall, total_data=total_data_y)
     except Exception as e:
         app.logger.error(f"Kesalahan dalam memproses permintaan SVM: {str(e)}")
         return jsonify({"error": f"Kesalahan dalam memproses permintaan SVM: {str(e)}"}), 500
